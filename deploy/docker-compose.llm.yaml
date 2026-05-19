@@ -1,0 +1,96 @@
+# LLM module: vLLM lab + vLLM dev + LiteLLM gateway
+#
+# Standalone: docker compose -f deploy/docker-compose.llm.yaml up -d
+# Env vars:   HF_TOKEN, VLLM_VERSION, HF_MODEL_LAB, HF_MODEL_DEV, CACHE_LAB, CACHE_DEV
+
+services:
+
+  lab:
+    image: nvcr.io/nvidia/vllm:${VLLM_VERSION}
+    container_name: ai-lab
+    restart: unless-stopped
+    command: >
+      vllm serve ${HF_MODEL_LAB}
+      --gpu-memory-utilization 0.7
+      --max-model-len 131072
+    environment:
+      - HF_TOKEN=${HF_TOKEN}
+      - HF_HUB_OFFLINE=1
+    ports:
+      - "127.0.0.1:8000:8000"
+    shm_size: 48gb
+    volumes:
+      - ${CACHE_LAB}:/root/.cache/huggingface
+    networks:
+      - internal
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8000/v1/models"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 600s
+
+  dev:
+    image: nvcr.io/nvidia/vllm:${VLLM_VERSION}
+    container_name: ai-dev
+    restart: unless-stopped
+    command: >
+      vllm serve ${HF_MODEL_DEV}
+      --gpu-memory-utilization 0.22
+      --enable-auto-tool-choice
+      --tool-call-parser gemma4
+    environment:
+      - HF_TOKEN=${HF_TOKEN}
+      - HF_HUB_OFFLINE=1
+    ports:
+      - "127.0.0.1:8001:8000"
+    shm_size: 16gb
+    volumes:
+      - ${CACHE_DEV}:/root/.cache/huggingface
+    networks:
+      - internal
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8000/v1/models"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 300s
+
+  litellm:
+    image: ghcr.io/berriai/litellm:main-latest
+    container_name: ai-litellm
+    restart: unless-stopped
+    command: --config /app/config.yaml --port 4000
+    volumes:
+      - ./litellm_config.yaml:/app/config.yaml:ro
+    networks:
+      - internal
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:4000/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    depends_on:
+      lab:
+        condition: service_healthy
+      dev:
+        condition: service_healthy
+
+networks:
+  internal:
+    driver: bridge

@@ -1,0 +1,45 @@
+# ai-stack — root deployment entrypoint
+#
+# Full stack:   docker compose -f deploy/docker-compose.yml up -d
+# Single module: docker compose -f deploy/docker-compose.image.yaml up -d
+#
+# Requires: ../.env (copy from ../.env.example and fill in secrets)
+
+include:
+  - path: docker-compose.llm.yaml
+  - path: docker-compose.image.yaml
+  - path: docker-compose.ocr.yaml
+
+services:
+
+  gateway:
+    build:
+      context: ../gateway
+    image: ai-stack/gateway:latest
+    container_name: ai-gateway
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8080:8080"
+    environment:
+      - LITELLM_URL=http://litellm:4000
+      - IMAGE_API_URL=http://image-api:8002
+      - OCR_API_URL=http://ocr-api:8003
+    networks:
+      - internal
+    depends_on:
+      litellm:
+        condition: service_healthy
+      image-api:
+        condition: service_healthy
+      ocr-api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 15s
+
+networks:
+  internal:
+    driver: bridge

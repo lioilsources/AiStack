@@ -1,0 +1,49 @@
+# Image module: text-to-image (FLUX.1-dev) + image-to-image (QwenImageEditPlusPipeline)
+#
+# Standalone: docker compose -f deploy/docker-compose.image.yaml up -d --build
+# Env vars:   HF_TOKEN, CACHE_FLUX, CACHE_QWEN_IMAGE, FLUX_FP8, LOAD_FLUX, LOAD_QWEN_IMAGE
+#
+# Memory note: FLUX (~24 GB) + Qwen-Image-Edit (~54 GB) = ~78 GB GPU.
+# Set LOAD_FLUX=0 or LOAD_QWEN_IMAGE=0 to load only one pipeline.
+
+services:
+
+  image-api:
+    build:
+      context: ../services/image-api
+    image: ai-stack/image-api:latest
+    container_name: ai-image-api
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8002:8002"
+    environment:
+      - HF_TOKEN=${HF_TOKEN}
+      - HF_HUB_OFFLINE=1
+      - FLUX_MODEL_ID=${FLUX_MODEL_ID:-black-forest-labs/FLUX.1-dev}
+      - QWEN_IMAGE_MODEL_ID=${QWEN_IMAGE_MODEL_ID:-Qwen/Qwen-Image-Edit-2511}
+      - FLUX_FP8=${FLUX_FP8:-0}
+      - LOAD_FLUX=${LOAD_FLUX:-1}
+      - LOAD_QWEN_IMAGE=${LOAD_QWEN_IMAGE:-1}
+    volumes:
+      - ${CACHE_FLUX}:/root/.cache/huggingface/flux
+      - ${CACHE_QWEN_IMAGE}:/root/.cache/huggingface/qwen-image
+    shm_size: 32gb
+    networks:
+      - internal
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8002/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 300s
+
+networks:
+  internal:
+    driver: bridge

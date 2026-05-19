@@ -1,0 +1,9 @@
+.env
+.env.local
+cache/
+__pycache__/
+*.pyc
+*.pyo
+.DS_Store
+*.log
+gateway/gateway
