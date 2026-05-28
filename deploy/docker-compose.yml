@@ -1,4 +1,4 @@
-# ai-stack — root deployment entrypoint
+# AiStack — root deployment entrypoint
 #
 # Full stack:   docker compose -f deploy/docker-compose.yml up -d
 # Single module: docker compose -f deploy/docker-compose.image.yaml up -d
@@ -15,7 +15,7 @@ services:
   gateway:
     build:
       context: ../gateway
-    image: ai-stack/gateway:latest
+    image: aistack/gateway:latest
     container_name: ai-gateway
     restart: unless-stopped
     ports:

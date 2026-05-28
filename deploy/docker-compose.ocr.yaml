@@ -9,7 +9,7 @@ services:
   ocr-api:
     build:
       context: ../services/ocr-api
-    image: ai-stack/ocr-api:latest
+    image: aistack/ocr-api:latest
     container_name: ai-ocr-api
     restart: unless-stopped
     ports:

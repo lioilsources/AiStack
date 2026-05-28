@@ -1,3 +1,3 @@
-module github.com/ol1n/ai-stack/gateway
+module github.com/ol1n/AiStack/gateway
 
 go 1.23

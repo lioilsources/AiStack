@@ -122,7 +122,7 @@ func main() {
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]string{ //nolint:errcheck
 			"status":  "ok",
-			"service": "ai-stack-gateway",
+			"service": "aistack-gateway",
 		})
 	})
 
@@ -145,7 +145,7 @@ func main() {
 		IdleTimeout:  120 * time.Second,
 	}
 
-	slog.Info("ai-stack gateway ready",
+	slog.Info("aistack gateway ready",
 		"addr", addr,
 		"llm", litellmURL,
 		"image", imageAPIURL,

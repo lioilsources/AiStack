@@ -11,7 +11,7 @@ services:
   image-api:
     build:
       context: ../services/image-api
-    image: ai-stack/image-api:latest
+    image: aistack/image-api:latest
     container_name: ai-image-api
     restart: unless-stopped
     ports:
