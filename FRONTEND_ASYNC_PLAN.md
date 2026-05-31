@@ -67,7 +67,8 @@ Odpověď je stejná `202` jako u generování. Při neplatném base64 → `400`
 GET /v1/images/jobs/{id}
 ```
 
-Vrací `200` v jednom ze 4 stavů:
+Vrací `200` v jednom ze 4 stavů. **Status je vždy malý — obrázek NIKDY neobsahuje**
+(viz endpoint 4):
 
 ```jsonc
 // fronta — čeká na GPU
@@ -76,9 +77,9 @@ Vrací `200` v jednom ze 4 stavů:
 // běží — step/total = průběh difúze (pro progress bar)
 { "id": "...", "status": "running", "step": 7,  "total": 14, "created": 1748... }
 
-// hotovo — obrázky jako base64 PNG
+// hotovo — kolik obrázků + kam pro ně jít (NE samotná data)
 { "id": "...", "status": "done",    "step": 14, "total": 14, "created": 1748...,
-  "data": [ { "b64_json": "iVBORw0KGgo..." } ] }
+  "count": 1, "result_url": "/v1/images/jobs/<id>/result" }
 
 // chyba
 { "id": "...", "status": "error",   "step": 3,  "total": 14, "created": 1748...,
@@ -87,6 +88,23 @@ Vrací `200` v jednom ze 4 stavů:
 
 `404` = neznámé nebo expirované `id` (hotové joby se drží **1 h**, pak se uklidí —
 viz `JOB_TTL`). Hotový obrázek je tedy potřeba **vyzvednout do hodiny**.
+
+### 4) Vyzvednutí obrázku — `GET /v1/images/jobs/{id}/result`
+
+```
+GET /v1/images/jobs/{id}/result          // první obrázek (index 0)
+GET /v1/images/jobs/{id}/result?index=1  // další, pokud n>1
+```
+
+Vrací **raw PNG bajty** (`Content-Type: image/png`) — žádný base64, žádný JSON.
+
+- `200` + tělo = PNG.
+- `409` = job ještě není `done` (status v textu chyby).
+- `404` = neznámý/expirovaný `id` nebo `index` mimo rozsah.
+
+> ⚠️ **Tohle volej JEDNOU**, až `status == "done"`. **Nepolluj** result endpoint —
+> obrázek má MB a opětovné stahování přes mobil je přesně to, co dřív přetížilo
+> linku a způsobilo 524. Pollovat se má jen lehký status (endpoint 3).
 
 ## Co implementovat ve Flutteru
 
@@ -100,8 +118,9 @@ viz `JOB_TTL`). Hotový obrázek je tedy potřeba **vyzvednout do hodiny**.
    - `queued` → ukaž „ve frontě (pozice N)".
    - `running` → progress `step / total` (např. „krok 7/14" nebo progress bar
      `step/total`).
-   - `done` → dekóduj `data[0].b64_json` (base64 → bytes → `Image.memory`),
-     zobraz, smaž uložené `id`.
+   - `done` → **přestaň pollovat**, stáhni obrázek **jednou** z
+     `result_url` (`Image.network('$base$result_url')`, nebo `http.get` →
+     `Image.memory`), zobraz, smaž uložené `id`.
    - `error` → ukaž `error`, smaž uložené `id`.
    - `404` → job expiroval/zmizel → nabídni „vygenerovat znovu".
 4. **Timeout/limit:** pokud `running` nepostoupí např. 5 min, nabídni cancel
@@ -135,9 +154,9 @@ Stream<JobState> pollJob(String id) async* {
       case 'running':
         yield JobState.running(j['step'] ?? 0, j['total'] ?? 1);
       case 'done':
-        final b64 = j['data'][0]['b64_json'] as String;
         await prefs.remove('pending_job');
-        yield JobState.done(base64Decode(b64));   // Uint8List → Image.memory
+        // NEstahuj obrázek v pollu. Předej result_url a stáhni ho jednou.
+        yield JobState.done('$base${j['result_url']}');   // → Image.network(url)
         return;
       case 'error':
         await prefs.remove('pending_job');
@@ -159,7 +178,7 @@ psaný stream za `Timer.periodic`.)
 | `queued`, `queue_position > 0` | „Ve frontě – pozice N" |
 | `queued`, pozice 0 / `running` step 0 | „Spouštím…" |
 | `running` | progress bar `step/total` + „krok 7/14" |
-| `done` | zobraz obrázek z `b64_json` |
+| `done` | přestaň pollovat, stáhni `result_url` jednou, zobraz |
 | `error` | zobraz `error`, tlačítko „Zkusit znovu" |
 | `404` | „Výsledek vypršel" → znovu |
 
@@ -167,14 +186,14 @@ psaný stream za `Timer.periodic`.)
 
 - **App na pozadí:** poll se zastaví, ale backend generuje dál. Po návratu do
   appky načti uložené `pending_job` a polluj dál — výsledek tam bude (do 1 h).
-- **Vyzvednout do 1 h** (JOB_TTL). Pro delší historii si appka musí obrázek uložit
-  lokálně, jakmile dorazí `done`.
+- **Vyzvednout do 1 h** (JOB_TTL). Po `done` stáhni `result_url` **jednou** a ulož
+  obrázek lokálně — po expiraci jobu (1 h) už nebude dostupný.
+- **Nepolluj `result_url`** — má MB. Pollovat jen lehký status (endpoint 3).
+- **`n>1`:** stáhni každý index zvlášť přes `?index=N` (status vrací `count`).
 - **Cancel:** backend zatím **nemá** cancel endpoint (job doběhne na GPU i když
   appka přestane pollovat). Pokud chcete cancel z UI, je to klientské „přestaň
   pollovat a zahoď" — řekni mi a doplním na backendu skutečné zrušení.
 - **Síťové chyby při pollu** (timeout, 5xx): neukončuj — zopakuj poll s backoffem.
-- **Více obrázků (`n>1`):** `data` je pole, projdi všechny prvky.
-
 ## Volitelné vylepšení (později)
 
 - **Push místo pollingu (FCM):** backend pingne appku, až je `done` — lepší na
@@ -184,8 +203,9 @@ psaný stream za `Timer.periodic`.)
 ## Shrnutí změn pro frontend
 
 - [ ] `POST` čte `202` + `id` (ne rovnou obrázek).
-- [ ] Persistovat `id`, polovat `GET /v1/images/jobs/{id}`.
+- [ ] Persistovat `id`, polovat **jen** `GET /v1/images/jobs/{id}` (lehký status).
 - [ ] Progress UI z `step/total`, fronta z `queue_position`.
-- [ ] Zpracovat `done` (base64 → obrázek), `error`, `404`/expiraci.
+- [ ] Na `done` přestat pollovat a stáhnout obrázek **jednou** z `result_url` (raw PNG).
+- [ ] Zpracovat `error`, `404`/expiraci, `409` (result ještě není ready).
 - [ ] Resume pollingu po návratu z pozadí.
 - [ ] (Volitelně) cancel, push.

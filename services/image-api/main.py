@@ -11,6 +11,7 @@ from typing import Literal, Optional
 
 import torch
 from fastapi import FastAPI, HTTPException
+from fastapi.responses import Response
 from pydantic import BaseModel, Field
 
 logger = logging.getLogger("image-api")
@@ -43,10 +44,10 @@ def _b64_to_pil(data: str):
         raise HTTPException(400, "invalid base64 image data")
 
 
-def _pil_to_b64(img) -> str:
+def _pil_to_png(img) -> bytes:
     buf = io.BytesIO()
     img.save(buf, format="PNG")
-    return base64.b64encode(buf.getvalue()).decode()
+    return buf.getvalue()
 
 
 def _load_flux():
@@ -97,7 +98,7 @@ def _new_job(kind: str, total: int) -> dict:
         "total": total,
         "created": _now(),
         "updated": _now(),
-        "result": None,       # list[{"b64_json": ...}] when done
+        "result": None,       # list[bytes] (raw PNG, one per image) when done
         "error": None,
     }
     _jobs[job["id"]] = job
@@ -136,7 +137,11 @@ def _public(job: dict) -> dict:
     if job["status"] == "queued":
         out["queue_position"] = _queue_position(job["id"])
     elif job["status"] == "done":
-        out["data"] = job["result"]
+        # Keep the poll response tiny — the image (MBs) is fetched ONCE from
+        # result_url, not re-sent on every poll (that re-download over mobile
+        # is what pushed polls past Cloudflare's 100 s timeout → 524).
+        out["count"] = len(job["result"])
+        out["result_url"] = f"/v1/images/jobs/{job['id']}/result"
     elif job["status"] == "error":
         out["error"] = job["error"]
     return out
@@ -172,7 +177,7 @@ def _run_pipe(pipe, job, **kwargs):
         return pipe(**kwargs)
 
 
-def _run_generation(job, prompt, w, h, n, steps) -> list[dict]:
+def _run_generation(job, prompt, w, h, n, steps) -> list[bytes]:
     result = _run_pipe(
         flux_pipe, job,
         prompt=prompt,
@@ -182,10 +187,10 @@ def _run_generation(job, prompt, w, h, n, steps) -> list[dict]:
         num_inference_steps=steps,
         guidance_scale=3.5,
     )
-    return [{"b64_json": _pil_to_b64(img)} for img in result.images]
+    return [_pil_to_png(img) for img in result.images]
 
 
-def _run_edit(job, prompt, image, w, h, n, steps) -> list[dict]:
+def _run_edit(job, prompt, image, w, h, n, steps) -> list[bytes]:
     result = _run_pipe(
         qwen_pipe, job,
         prompt=prompt,
@@ -196,7 +201,7 @@ def _run_edit(job, prompt, image, w, h, n, steps) -> list[dict]:
         num_inference_steps=steps,
     )
     images = result.images if hasattr(result, "images") else result
-    return [{"b64_json": _pil_to_b64(img)} for img in images]
+    return [_pil_to_png(img) for img in images]
 
 
 async def _worker() -> None:
@@ -314,6 +319,20 @@ async def job_status(job_id: str):
     if job is None:
         raise HTTPException(404, "job not found (unknown id or expired)")
     return _public(job)
+
+
+@app.get("/v1/images/jobs/{job_id}/result")
+async def job_result(job_id: str, index: int = 0):
+    """Fetch a finished image as raw PNG bytes. Fetch this ONCE per job —
+    don't poll it (it's MBs). For n>1, select with ?index=N."""
+    job = _jobs.get(job_id)
+    if job is None:
+        raise HTTPException(404, "job not found (unknown id or expired)")
+    if job["status"] != "done":
+        raise HTTPException(409, f"result not ready (status: {job['status']})")
+    if not 0 <= index < len(job["result"]):
+        raise HTTPException(404, f"index {index} out of range (0..{len(job['result']) - 1})")
+    return Response(content=job["result"][index], media_type="image/png")
 
 
 @app.get("/health")
