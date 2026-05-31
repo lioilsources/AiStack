@@ -9,7 +9,7 @@ CACHE_DIR="${CACHE_FLUX:-$ROOT/cache/flux}"
 
 mkdir -p "$CACHE_DIR"
 echo "[flux] downloading black-forest-labs/FLUX.1-dev → $CACHE_DIR"
-huggingface-cli download black-forest-labs/FLUX.1-dev \
+hf download black-forest-labs/FLUX.1-dev \
   --token "$HF_TOKEN" \
   --cache-dir "$CACHE_DIR"
 echo "[flux] done"

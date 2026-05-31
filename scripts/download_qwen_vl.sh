@@ -8,7 +8,7 @@ CACHE_DIR="${CACHE_QWEN_VL:-$ROOT/cache/qwen-vl}"
 
 mkdir -p "$CACHE_DIR"
 echo "[qwen-vl] downloading Qwen/Qwen2.5-VL-7B-Instruct → $CACHE_DIR"
-huggingface-cli download Qwen/Qwen2.5-VL-7B-Instruct \
+hf download Qwen/Qwen2.5-VL-7B-Instruct \
   --token "$HF_TOKEN" \
   --cache-dir "$CACHE_DIR"
 echo "[qwen-vl] done"

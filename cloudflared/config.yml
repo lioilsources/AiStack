@@ -1,0 +1,20 @@
+# Cloudflare Tunnel config — AiStack on DGX Spark
+# Mounted into the container at /etc/cloudflared/
+
+tunnel: 46b3669e-0b5d-4a57-8cc2-6c8625fde590
+credentials-file: /etc/cloudflared/46b3669e-0b5d-4a57-8cc2-6c8625fde590.json
+
+ingress:
+  # llm.ol1n.com → AiStack Go gateway (LLM + image + OCR routing)
+  - hostname: llm.ol1n.com
+    service: http://gateway:8080
+    originRequest:
+      connectTimeout: 30s
+      tcpKeepAlive: 30s
+      noHappyEyeballs: false
+      keepAliveTimeout: 90s
+      keepAliveConnections: 10
+      httpHostHeader: llm.ol1n.com
+      originServerName: ""
+
+  - service: http_status:404

@@ -49,8 +49,11 @@ def _load_qwen_image():
 
     model_id = os.environ["QWEN_IMAGE_MODEL_ID"]
     cache_dir = "/root/.cache/huggingface/qwen-image"
+    # Support both layouts: HF hub cache (models--org--name/snapshots/...) and a direct
+    # snapshot folder (model_index.json at the cache root, as produced by `git clone`).
+    source = cache_dir if os.path.exists(os.path.join(cache_dir, "model_index.json")) else model_id
     return QwenImageEditPlusPipeline.from_pretrained(
-        model_id, torch_dtype=torch.bfloat16, local_files_only=True, cache_dir=cache_dir
+        source, torch_dtype=torch.bfloat16, local_files_only=True, cache_dir=cache_dir
     ).to("cuda")
 
 

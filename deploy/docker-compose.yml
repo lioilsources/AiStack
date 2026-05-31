@@ -27,11 +27,7 @@ services:
     networks:
       - internal
     depends_on:
-      litellm:
-        condition: service_healthy
       image-api:
-        condition: service_healthy
-      ocr-api:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:8080/health"]
@@ -39,6 +35,36 @@ services:
       timeout: 3s
       retries: 5
       start_period: 15s
+
+  # ─────────────────────────────────────────────
+  # Cloudflare Tunnel — exposes gateway at llm.ol1n.com
+  # Credentials + config in ../cloudflared/
+  # ─────────────────────────────────────────────
+  cloudflared-1:
+    image: cloudflare/cloudflared:latest
+    container_name: ai-cloudflared-1
+    restart: unless-stopped
+    command: tunnel --loglevel debug --config /etc/cloudflared/config.yml run
+    volumes:
+      - ../cloudflared:/etc/cloudflared:ro
+    networks:
+      - internal
+    depends_on:
+      gateway:
+        condition: service_healthy
+
+  cloudflared-2:
+    image: cloudflare/cloudflared:latest
+    container_name: ai-cloudflared-2
+    restart: unless-stopped
+    command: tunnel --loglevel debug --config /etc/cloudflared/config.yml run
+    volumes:
+      - ../cloudflared:/etc/cloudflared:ro
+    networks:
+      - internal
+    depends_on:
+      gateway:
+        condition: service_healthy
 
 networks:
   internal:
