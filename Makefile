@@ -6,7 +6,7 @@ COMPOSE_OCR   := docker compose -f deploy/docker-compose.ocr.yaml --env-file .en
 .PHONY: build up down logs ps \
         up-llm up-image up-ocr \
         down-llm down-image down-ocr \
-        download-flux download-qwen-vl \
+        download-flux download-flux-lora download-qwen-vl \
         gateway-build gateway-run
 
 ## Full stack
@@ -47,6 +47,9 @@ down-ocr:
 ## Model downloads (requires HF_TOKEN in .env)
 download-flux:
 	env $$(grep -v '^#' .env | xargs) bash scripts/download_flux.sh
+
+download-flux-lora:
+	env $$(grep -v '^#' .env | xargs) bash scripts/download_flux_lora.sh
 
 download-qwen-vl:
 	env $$(grep -v '^#' .env | xargs) bash scripts/download_qwen_vl.sh

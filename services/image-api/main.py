@@ -19,6 +19,13 @@ logger = logging.getLogger("image-api")
 flux_pipe = None
 qwen_pipe = None
 
+# Whether the NSFW LoRA adapter successfully attached to flux_pipe.
+flux_lora_loaded = False
+
+# Adapter name + default strength for the NSFW LoRA (Ryouko65777/Flux-Uncensored-V2).
+NSFW_ADAPTER = "nsfw"
+DEFAULT_LORA_SCALE = float(os.environ.get("FLUX_NSFW_LORA_SCALE", "1.0"))
+
 # ── Async job store ───────────────────────────────────────────
 # Image generation takes 1–3 min, which is longer than Cloudflare's 100 s
 # proxy timeout (→ 524) and is fragile over mobile networks. So requests
@@ -50,6 +57,38 @@ def _pil_to_png(img) -> bytes:
     return buf.getvalue()
 
 
+def _attach_flux_lora(pipe) -> None:
+    """Load the NSFW LoRA as a named adapter, kept DISABLED so SFW is the default.
+
+    Requests opt in per-call (nsfw=True), which toggles the adapter on the single
+    GPU worker thread — see _set_flux_variant. Missing file or load failure just
+    leaves the nsfw variant unavailable; SFW generation is unaffected.
+    """
+    global flux_lora_loaded
+
+    if os.environ.get("LOAD_FLUX_LORA", "1") != "1":
+        return
+    lora_path = os.environ.get(
+        "FLUX_NSFW_LORA", "/root/.cache/huggingface/flux/lora/lora.safetensors"
+    )
+    if not os.path.exists(lora_path):
+        logger.warning("NSFW LoRA not found at %s — nsfw variant disabled "
+                       "(run scripts/download_flux_lora.sh)", lora_path)
+        return
+    try:
+        pipe.load_lora_weights(
+            os.path.dirname(lora_path),
+            weight_name=os.path.basename(lora_path),
+            adapter_name=NSFW_ADAPTER,
+        )
+        pipe.disable_lora()  # SFW is the default; requests enable per-call
+        flux_lora_loaded = True
+        logger.info("loaded NSFW LoRA '%s' from %s (disabled by default)",
+                    NSFW_ADAPTER, lora_path)
+    except Exception:  # noqa: BLE001 — never let a bad LoRA take down SFW generation
+        logger.exception("failed to load NSFW LoRA from %s — nsfw variant disabled", lora_path)
+
+
 def _load_flux():
     from diffusers import FluxPipeline
 
@@ -63,11 +102,26 @@ def _load_flux():
         freeze(p.transformer)
         quantize(p.text_encoder_2, weights=qfloat8)
         freeze(p.text_encoder_2)
+        # LoRA can't attach to a quanto-frozen transformer; nsfw stays unavailable under FP8.
         return p.to("cuda")
 
-    return FluxPipeline.from_pretrained(
+    pipe = FluxPipeline.from_pretrained(
         model_id, torch_dtype=torch.bfloat16, cache_dir=cache_dir
     ).to("cuda")
+    _attach_flux_lora(pipe)
+    return pipe
+
+
+def _set_flux_variant(nsfw: bool, scale) -> None:
+    """Toggle the NSFW LoRA on flux_pipe. Safe because the GPU worker is single
+    threaded (max_workers=1), so no two generations race on adapter state."""
+    if not flux_lora_loaded:
+        return  # request endpoint already rejected nsfw=True when unavailable
+    if nsfw:
+        flux_pipe.set_adapters(NSFW_ADAPTER, adapter_weights=scale or DEFAULT_LORA_SCALE)
+        flux_pipe.enable_lora()
+    else:
+        flux_pipe.disable_lora()
 
 
 def _load_qwen_image():
@@ -177,7 +231,8 @@ def _run_pipe(pipe, job, **kwargs):
         return pipe(**kwargs)
 
 
-def _run_generation(job, prompt, w, h, n, steps) -> list[bytes]:
+def _run_generation(job, prompt, w, h, n, steps, nsfw=False, scale=None) -> list[bytes]:
+    _set_flux_variant(nsfw, scale)
     result = _run_pipe(
         flux_pipe, job,
         prompt=prompt,
@@ -268,6 +323,10 @@ class GenerationRequest(BaseModel):
     model: Optional[str] = "flux-1-dev"
     quality: Optional[str] = "standard"
     num_inference_steps: Optional[int] = None
+    # NSFW LoRA toggle. Unset → default to NSFW when the LoRA is loaded (else SFW);
+    # explicit false → SFW; explicit true → require the LoRA (503 if unavailable).
+    nsfw: Optional[bool] = None
+    lora_scale: Optional[float] = Field(None, ge=0.0, le=2.0)  # override LoRA strength
 
 
 class EditRequest(BaseModel):
@@ -292,10 +351,20 @@ def _parse_size(size: str) -> tuple[int, int]:
 async def generate(req: GenerationRequest):
     if flux_pipe is None:
         raise HTTPException(503, "FLUX pipeline not loaded (set LOAD_FLUX=1)")
+    if req.nsfw is True and not flux_lora_loaded:
+        raise HTTPException(
+            503,
+            "NSFW variant unavailable: LoRA not loaded "
+            "(run scripts/download_flux_lora.sh and set LOAD_FLUX_LORA=1, FLUX_FP8=0)",
+        )
+    # Default to NSFW when the LoRA is available; nsfw=false still forces SFW.
+    nsfw = flux_lora_loaded if req.nsfw is None else req.nsfw
     w, h = _parse_size(req.size)
     steps = req.num_inference_steps or (20 if req.quality == "hd" else 14)
     job = _new_job("generation", steps)
-    job["_run"] = lambda: _run_generation(job, req.prompt, w, h, req.n, steps)
+    job["_run"] = lambda: _run_generation(
+        job, req.prompt, w, h, req.n, steps, nsfw, req.lora_scale
+    )
     await _queue.put(job["id"])
     return _accepted(job)
 
@@ -340,6 +409,7 @@ async def health():
     return {
         "status": "ok",
         "flux_loaded": flux_pipe is not None,
+        "flux_nsfw_lora_loaded": flux_lora_loaded,
         "qwen_image_loaded": qwen_pipe is not None,
         "queue_depth": _queue.qsize() if _queue is not None else 0,
         "jobs_tracked": len(_jobs),

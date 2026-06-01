@@ -4,6 +4,7 @@ uvicorn[standard]==0.32.0
 diffusers @ git+https://github.com/huggingface/diffusers.git
 transformers>=4.51.0
 accelerate>=1.0.0
+peft>=0.13.0
 sentencepiece
 protobuf
 optimum-quanto
