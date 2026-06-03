@@ -1,0 +1,266 @@
+# SwarmBattle LLM module — 4-tier Nemotron stack for Pipeline B (LangGraph hybrid)
+#
+# Standalone:   docker compose -f deploy/docker-compose.swarm.yaml up -d
+# With director: docker compose -f deploy/docker-compose.swarm.yaml --profile director up -d
+# Env vars:     HF_TOKEN, SWARM_VLLM_VERSION, HF_MODEL_SWARM_*, CACHE_SWARM_*, CHROMADB_DATA
+#
+# Memory budget (DGX Spark 128 GB UMA):
+#   Resident (nano + coder + rag + embed + chroma)  ~78 GB
+#   + director profile (Super-120B-NVFP4)           +60 GB → ~98 GB peak
+
+services:
+
+  # ── Tier L3: Router + Verifier (fast MoE, always resident) ─────────────────
+  # Nemotron-3-Nano-30B-A3B-NVFP4: 30B total / 3.5B active, 256K context
+  # ~15 GB VRAM, reasoning on/off via chat_template_kwargs.enable_thinking
+  swarm-nano:
+    image: vllm/vllm-openai:${SWARM_VLLM_VERSION}
+    container_name: swarm-nano
+    restart: unless-stopped
+    command: >
+      vllm serve ${HF_MODEL_SWARM_NANO}
+      --served-model-name swarm-nano
+      --gpu-memory-utilization 0.15
+      --max-model-len 262144
+      --max-num-seqs 8
+      --kv-cache-dtype fp8
+      --enable-auto-tool-choice
+      --tool-call-parser qwen3_coder
+      --reasoning-parser-plugin /parsers/nano_v3_reasoning_parser.py
+      --reasoning-parser nano_v3
+      --trust-remote-code
+    environment:
+      - HF_TOKEN=${HF_TOKEN}
+      - HF_HUB_OFFLINE=1
+      - VLLM_USE_FLASHINFER_MOE_FP4=1
+      - VLLM_FLASHINFER_MOE_BACKEND=throughput
+    ports:
+      - "127.0.0.1:8010:8000"
+    shm_size: 8gb
+    volumes:
+      - ${CACHE_SWARM_NANO}:/root/.cache/huggingface
+      - ./parsers:/parsers:ro
+    networks:
+      - internal
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8000/v1/models"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 300s
+
+  # ── Tier L2: Coder (code generation, always resident) ──────────────────────
+  # Default: microsoft/Phi-4 (~14 GB, strong at code)
+  # Upgrade:  nvidia/Llama-3_3-Nemotron-Super-49B-v1 Q4 (~28 GB, better reasoning)
+  # Switch via HF_MODEL_SWARM_CODER env var — see .env.example
+  swarm-coder:
+    image: vllm/vllm-openai:${SWARM_VLLM_VERSION}
+    container_name: swarm-coder
+    restart: unless-stopped
+    command: >
+      vllm serve ${HF_MODEL_SWARM_CODER}
+      --served-model-name swarm-coder
+      --gpu-memory-utilization 0.14
+      --max-model-len 32768
+      --enable-auto-tool-choice
+      --tool-call-parser pythonic
+      --trust-remote-code
+    environment:
+      - HF_TOKEN=${HF_TOKEN}
+      - HF_HUB_OFFLINE=1
+    ports:
+      - "127.0.0.1:8011:8000"
+    shm_size: 8gb
+    volumes:
+      - ${CACHE_SWARM_CODER}:/root/.cache/huggingface
+    networks:
+      - internal
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8000/v1/models"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 300s
+
+  # ── Tier L1: Director / Reasoner (on-demand, profile: director) ────────────
+  # Nemotron-3-Super-120B-A12B-NVFP4: 120B total / 12B active, 1M context
+  # ~60 GB VRAM, AIME25 90.21%, SWE-Bench 60.47%
+  # Requires: vllm==0.20.0, DGX Spark Blackwell architecture (NVFP4 + Marlin)
+  # Activate: docker compose --profile director up -d
+  swarm-director:
+    image: vllm/vllm-openai:${SWARM_VLLM_VERSION}
+    container_name: swarm-director
+    restart: unless-stopped
+    profiles:
+      - director
+    command: >
+      vllm serve ${HF_MODEL_SWARM_DIRECTOR}
+      --served-model-name swarm-director
+      --gpu-memory-utilization 0.60
+      --max-model-len 262144
+      --kv-cache-dtype fp8
+      --reasoning-parser nemotron_v3
+      --enable-auto-tool-choice
+      --tool-call-parser qwen3_coder
+      --trust-remote-code
+    environment:
+      - HF_TOKEN=${HF_TOKEN}
+      - HF_HUB_OFFLINE=1
+      - VLLM_NVFP4_GEMM_BACKEND=marlin
+      - VLLM_FLASHINFER_ALLREDUCE_BACKEND=trtllm
+      - VLLM_USE_FLASHINFER_MOE_FP4=0
+    ports:
+      - "127.0.0.1:8012:8000"
+    shm_size: 32gb
+    volumes:
+      - ${CACHE_SWARM_DIRECTOR}:/root/.cache/huggingface
+    networks:
+      - internal
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8000/v1/models"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 600s
+
+  # ── Tier L4: RAG / KB Retrieval (long-context, always resident) ─────────────
+  # Llama-3.1-Nemotron-8B-UltraLong-4M-Instruct: 4M context window
+  # ~16 GB BF16 — use for injecting entire ShaderToy KB into context
+  # 4M mode: set VLLM_ALLOW_LONG_MAX_MODEL_LEN=1 and --max-model-len 1048576
+  swarm-rag:
+    image: vllm/vllm-openai:${SWARM_VLLM_VERSION}
+    container_name: swarm-rag
+    restart: unless-stopped
+    command: >
+      vllm serve ${HF_MODEL_SWARM_RAG}
+      --served-model-name swarm-rag
+      --gpu-memory-utilization 0.16
+      --max-model-len 131072
+      --trust-remote-code
+    environment:
+      - HF_TOKEN=${HF_TOKEN}
+      - HF_HUB_OFFLINE=1
+    ports:
+      - "127.0.0.1:8013:8000"
+    shm_size: 8gb
+    volumes:
+      - ${CACHE_SWARM_RAG}:/root/.cache/huggingface
+    networks:
+      - internal
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8000/v1/models"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 300s
+
+  # ── Embeddings: text-embeddings-inference (TEI) ────────────────────────────
+  # intfloat/e5-mistral-7b-instruct — ~5 GB, purpose-built embedding server
+  # Lighter than vLLM embedding mode (~9 GB savings vs vLLM)
+  swarm-embed:
+    image: ghcr.io/huggingface/text-embeddings-inference:latest
+    container_name: swarm-embed
+    restart: unless-stopped
+    command: --model-id ${HF_MODEL_SWARM_EMBED} --port 80
+    environment:
+      - HF_TOKEN=${HF_TOKEN}
+      - HF_HUB_OFFLINE=1
+    ports:
+      - "127.0.0.1:8005:80"
+    volumes:
+      - ${CACHE_SWARM_EMBED}:/data
+    networks:
+      - internal
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:80/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 120s
+
+  # ── Vector store: ChromaDB ─────────────────────────────────────────────────
+  chromadb:
+    image: ghcr.io/chroma-core/chroma:latest
+    container_name: swarm-chromadb
+    restart: unless-stopped
+    environment:
+      - IS_PERSISTENT=TRUE
+      - PERSIST_DIRECTORY=/chroma/chroma
+      - ANONYMIZED_TELEMETRY=FALSE
+    ports:
+      - "127.0.0.1:8006:8000"
+    volumes:
+      - ${CHROMADB_DATA}:/chroma/chroma
+    networks:
+      - internal
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8000/api/v1/heartbeat"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  # ── LiteLLM gateway for swarm models ──────────────────────────────────────
+  swarm-litellm:
+    image: ghcr.io/berriai/litellm:main-latest
+    container_name: swarm-litellm
+    restart: unless-stopped
+    command: --config /app/config.yaml --port 4000
+    volumes:
+      - ./litellm_config_swarm.yaml:/app/config.yaml:ro
+    ports:
+      - "127.0.0.1:4001:4000"
+    networks:
+      - internal
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:4000/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    depends_on:
+      swarm-nano:
+        condition: service_healthy
+      swarm-coder:
+        condition: service_healthy
+      swarm-rag:
+        condition: service_healthy
+
+networks:
+  internal:
+    driver: bridge

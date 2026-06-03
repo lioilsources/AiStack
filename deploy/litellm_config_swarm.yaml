@@ -1,0 +1,32 @@
+litellm_settings:
+  drop_params: true
+  drop_streaming_with_functions: true
+
+model_list:
+  # Tier L3 — fast router / verifier (Nano-30B MoE, 3.5B active)
+  - model_name: swarm-nano
+    litellm_params:
+      model: openai/swarm-nano
+      api_base: http://swarm-nano:8000/v1
+      api_key: dummy
+
+  # Tier L2 — coder (Phi-4-14B default; swap to Nemotron-49B via HF_MODEL_SWARM_CODER)
+  - model_name: swarm-coder
+    litellm_params:
+      model: openai/swarm-coder
+      api_base: http://swarm-coder:8000/v1
+      api_key: dummy
+
+  # Tier L1 — director / deep reasoner (Super-120B-A12B-NVFP4, on-demand profile)
+  - model_name: swarm-director
+    litellm_params:
+      model: openai/swarm-director
+      api_base: http://swarm-director:8000/v1
+      api_key: dummy
+
+  # Tier L4 — RAG retrieval (8B UltraLong, 4M context)
+  - model_name: swarm-rag
+    litellm_params:
+      model: openai/swarm-rag
+      api_base: http://swarm-rag:8000/v1
+      api_key: dummy
