@@ -94,3 +94,4 @@ services:
 networks:
   internal:
     driver: bridge
+    name: ai
