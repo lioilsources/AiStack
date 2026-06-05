@@ -1,0 +1,43 @@
+services:
+  ocr-api:
+    image: ghcr.io/ol1n/ocr-api:latest
+    ports:
+      - "127.0.0.1:8003:8003"
+    environment:
+      REDIS_URL: redis://ocr-redis:6379
+      OCR_MODEL: ${OCR_MODEL:-pero-czech-kurrent}
+      OCR_MODEL_DIR: /models
+      HF_TOKEN: ${HF_TOKEN}
+    volumes:
+      - ${CACHE_OCR}:/models
+    networks:
+      - ai
+    depends_on:
+      ocr-redis:
+        condition: service_healthy
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8003/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  ocr-redis:
+    image: redis:7-alpine
+    networks:
+      - ai
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+networks:
+  ai:
+    external: true

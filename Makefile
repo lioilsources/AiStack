@@ -77,6 +77,9 @@ download-flux-lora:
 download-qwen-vl:
 	env $$(grep -v '^#' .env | xargs) bash scripts/download_qwen_vl.sh
 
+download-pero-models:
+	env $$(grep -v '^#' .env | xargs) bash scripts/download_pero_models.sh
+
 ## Go gateway — local dev build and run
 gateway-build:
 	cd gateway && go build -o gateway ./cmd/gateway
