@@ -9,7 +9,7 @@ COMPOSE_SWARM := docker compose -f deploy/docker-compose.swarm.yaml --env-file .
         down-llm down-image down-ocr \
         up-swarm down-swarm up-swarm-director down-swarm-director \
         download-flux download-flux-lora download-qwen-vl \
-        download-nemotron download-nemotron-coder \
+        download-nemotron download-nemotron-coder download-ocr-models \
         gateway-build gateway-run
 
 ## Full stack
@@ -77,8 +77,8 @@ download-flux-lora:
 download-qwen-vl:
 	env $$(grep -v '^#' .env | xargs) bash scripts/download_qwen_vl.sh
 
-download-pero-models:
-	env $$(grep -v '^#' .env | xargs) bash scripts/download_pero_models.sh
+download-ocr-models:
+	env $$(grep -v '^#' .env | xargs) bash scripts/download_ocr_models.sh
 
 ## Go gateway — local dev build and run
 gateway-build:

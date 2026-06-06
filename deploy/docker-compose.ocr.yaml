@@ -5,7 +5,8 @@ services:
       - "127.0.0.1:8003:8003"
     environment:
       REDIS_URL: redis://ocr-redis:6379
-      OCR_MODEL: ${OCR_MODEL:-pero-czech-kurrent}
+      # model dir name matches download_ocr_models.sh naming: org__repo
+      OCR_MODEL: ${OCR_MODEL:-dh-unibe__trocr-kurrent}
       OCR_MODEL_DIR: /models
       HF_TOKEN: ${HF_TOKEN}
     volumes:
