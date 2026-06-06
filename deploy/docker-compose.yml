@@ -1,7 +1,8 @@
 # AiStack — root deployment entrypoint (infra: LLM + gateway + Cloudflare)
 #
-# Client services (image-api, ocr-api) live in their own repos and join the
-# 'ai' Docker network declared here.
+# Client services (ocr-api) live in their own repos and join the
+# 'ai' Docker network declared here. Image generation is served separately by
+# ComfyUI on the host (comfyui.ol1n.com), not through this gateway.
 #
 # Full stack:    docker compose -f deploy/docker-compose.yml up -d
 # LLM only:      docker compose -f deploy/docker-compose.llm.yaml up -d
@@ -23,7 +24,6 @@ services:
       - "127.0.0.1:8080:8080"
     environment:
       - LITELLM_URL=http://litellm:4000
-      - IMAGE_API_URL=http://image-api:8002
       - OCR_API_URL=http://ocr-api:8003
     networks:
       - internal
@@ -45,6 +45,8 @@ services:
     command: tunnel --loglevel debug --config /etc/cloudflared/config.yml run
     volumes:
       - ../cloudflared:/etc/cloudflared:ro
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     networks:
       - internal
     depends_on:
@@ -58,6 +60,8 @@ services:
     command: tunnel --loglevel debug --config /etc/cloudflared/config.yml run
     volumes:
       - ../cloudflared:/etc/cloudflared:ro
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     networks:
       - internal
     depends_on:
