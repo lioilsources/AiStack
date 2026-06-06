@@ -108,8 +108,8 @@ func main() {
 	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, nil)))
 
 	litellmURL := envOr("LITELLM_URL", "http://litellm:4000")
-	ocrAPIURL  := envOr("OCR_API_URL", "http://ocr-api:8003")
-	addr       := envOr("LISTEN_ADDR", ":8080")
+	ocrAPIURL := envOr("OCR_API_URL", "http://ocr-api:8003")
+	addr := envOr("LISTEN_ADDR", ":8080")
 
 	llmProxy := newProxy(litellmURL)
 	ocrProxy := newProxy(ocrAPIURL)
@@ -136,8 +136,8 @@ func main() {
 	mux.Handle("/", llmProxy)
 
 	srv := &http.Server{
-		Addr:        addr,
-		Handler:     chain(mux, withRequestID, withLogging, withCORS),
+		Addr:         addr,
+		Handler:      chain(mux, withRequestID, withLogging, withCORS),
 		ReadTimeout:  0, // disabled — LLM streaming and image generation can take minutes
 		WriteTimeout: 0,
 		IdleTimeout:  120 * time.Second,
