@@ -38,12 +38,15 @@ services:
       start_period: 600s
 
   dev:
-    image: nvcr.io/nvidia/vllm:${VLLM_VERSION}
+    # Speciální vLLM build s podporou Gemma-4 architektury (nvcr image ji nezná).
+    # Entrypoint je 'vllm serve', takže command = model + flagy (bez prefixu).
+    image: vllm/vllm-openai:gemma4-cu130
     container_name: ai-dev
     restart: unless-stopped
     command: >
-      vllm serve ${HF_MODEL_DEV}
-      --gpu-memory-utilization 0.22
+      ${HF_MODEL_DEV}
+      --gpu-memory-utilization 0.35
+      --max-model-len 65536
       --enable-auto-tool-choice
       --tool-call-parser gemma4
     environment:

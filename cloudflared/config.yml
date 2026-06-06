@@ -5,7 +5,7 @@ tunnel: 46b3669e-0b5d-4a57-8cc2-6c8625fde590
 credentials-file: /etc/cloudflared/46b3669e-0b5d-4a57-8cc2-6c8625fde590.json
 
 ingress:
-  # llm.ol1n.com → AiStack Go gateway (LLM + image + OCR routing)
+  # llm.ol1n.com → AiStack Go gateway (LLM + OCR routing)
   - hostname: llm.ol1n.com
     service: http://gateway:8080
     originRequest:
@@ -16,5 +16,13 @@ ingress:
       keepAliveConnections: 10
       httpHostHeader: llm.ol1n.com
       originServerName: ""
+
+  # comfyui.ol1n.com → nativní ComfyUI běžící na hostu (:8188).
+  # cloudflared je v kontejneru, takže host se reachne přes host.docker.internal
+  # (vyžaduje extra_hosts host-gateway v docker-compose.yml).
+  - hostname: comfyui.ol1n.com
+    service: http://host.docker.internal:8188
+    originRequest:
+      connectTimeout: 30s
 
   - service: http_status:404

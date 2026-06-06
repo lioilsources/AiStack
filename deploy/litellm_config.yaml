@@ -3,10 +3,11 @@ litellm_settings:
   drop_streaming_with_functions: true
 
 model_list:
+  # Obě jména míří na jedinou Gemma instanci (service 'dev').
   - model_name: llm-lab
     litellm_params:
-      model: openai/openai/gpt-oss-120b
-      api_base: http://lab:8000/v1
+      model: openai/nvidia/Gemma-4-31B-IT-NVFP4
+      api_base: http://dev:8000/v1
       api_key: dummy
 
   - model_name: llm-dev

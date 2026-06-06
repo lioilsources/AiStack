@@ -107,14 +107,12 @@ func chain(h http.Handler, mw ...func(http.Handler) http.Handler) http.Handler {
 func main() {
 	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, nil)))
 
-	litellmURL  := envOr("LITELLM_URL",   "http://litellm:4000")
-	imageAPIURL := envOr("IMAGE_API_URL", "http://image-api:8002")
-	ocrAPIURL   := envOr("OCR_API_URL",   "http://ocr-api:8003")
-	addr        := envOr("LISTEN_ADDR",   ":8080")
+	litellmURL := envOr("LITELLM_URL", "http://litellm:4000")
+	ocrAPIURL := envOr("OCR_API_URL", "http://ocr-api:8003")
+	addr := envOr("LISTEN_ADDR", ":8080")
 
-	llmProxy   := newProxy(litellmURL)
-	imageProxy := newProxy(imageAPIURL)
-	ocrProxy   := newProxy(ocrAPIURL)
+	llmProxy := newProxy(litellmURL)
+	ocrProxy := newProxy(ocrAPIURL)
 
 	mux := http.NewServeMux()
 
@@ -126,8 +124,8 @@ func main() {
 		})
 	})
 
-	// Image generation (text2img) and editing (img2img)
-	mux.Handle("/v1/images/", imageProxy)
+	// Image generation/editing is handled out-of-band by ComfyUI
+	// (comfyui.ol1n.com), not through this gateway.
 
 	// OCR
 	mux.Handle("/v1/ocr", ocrProxy)
@@ -138,8 +136,8 @@ func main() {
 	mux.Handle("/", llmProxy)
 
 	srv := &http.Server{
-		Addr:        addr,
-		Handler:     chain(mux, withRequestID, withLogging, withCORS),
+		Addr:         addr,
+		Handler:      chain(mux, withRequestID, withLogging, withCORS),
 		ReadTimeout:  0, // disabled — LLM streaming and image generation can take minutes
 		WriteTimeout: 0,
 		IdleTimeout:  120 * time.Second,
@@ -148,7 +146,6 @@ func main() {
 	slog.Info("aistack gateway ready",
 		"addr", addr,
 		"llm", litellmURL,
-		"image", imageAPIURL,
 		"ocr", ocrAPIURL,
 	)
 
