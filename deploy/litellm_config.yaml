@@ -3,16 +3,23 @@ litellm_settings:
   drop_streaming_with_functions: true
 
 model_list:
-  # lab = GPT-OSS-120B (vLLM, port 8000)
-  # dev alias kept for compatibility during transition
+  # Obě jména míří na jedinou instanci (service 'dev' = Nemotron-3-Nano, served-model-name 'dev').
+  # Nano je reasoning model — thinking vypnuto by default (chat app chce přímé odpovědi, ne <think>).
+  # Klient může reasoning zapnout posláním chat_template_kwargs.enable_thinking=true.
   - model_name: llm-lab
     litellm_params:
-      model: openai/openai/gpt-oss-120b
-      api_base: http://lab:8000/v1
+      model: openai/dev
+      api_base: http://dev:8000/v1
       api_key: dummy
+      extra_body:
+        chat_template_kwargs:
+          enable_thinking: false
 
   - model_name: llm-dev
     litellm_params:
-      model: openai/openai/gpt-oss-120b
-      api_base: http://lab:8000/v1
+      model: openai/dev
+      api_base: http://dev:8000/v1
       api_key: dummy
+      extra_body:
+        chat_template_kwargs:
+          enable_thinking: false

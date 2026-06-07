@@ -6,6 +6,8 @@
 services:
 
   lab:
+    # Nepoužívá se (dev jede jako jediná instance). Profile 'lab' brání náhodnému startu přes `up`.
+    profiles: ["lab"]
     image: nvcr.io/nvidia/vllm:${VLLM_VERSION}
     container_name: ai-lab
     restart: unless-stopped
@@ -38,25 +40,37 @@ services:
       start_period: 600s
 
   dev:
-    # Speciální vLLM build s podporou Gemma-4 architektury (nvcr image ji nezná).
-    # Entrypoint je 'vllm serve', takže command = model + flagy (bez prefixu).
-    image: vllm/vllm-openai:gemma4-cu130
+    # Nemotron-3-Nano-30B-A3B-NVFP4 (nemotron_h hybrid Mamba-MoE, 3.5B aktiv).
+    # MoE → dekódování čte ~5 GB místo 31 GB → na GB10 řádově rychlejší než dense Gemma-4.
+    # Standardní vLLM image (v0.20.0 podporuje nemotron_h); entrypoint = ["vllm","serve"] → command bez prefixu.
+    # Reasoning model: nano_v3 parser oddělí <think> do reasoning_content, klient dostane čistý content.
+    image: vllm/vllm-openai:v0.20.0
     container_name: ai-dev
     restart: unless-stopped
     command: >
       ${HF_MODEL_DEV}
-      --gpu-memory-utilization 0.35
-      --max-model-len 65536
+      --served-model-name dev
+      --gpu-memory-utilization 0.20
+      --max-model-len 32768
+      --max-num-seqs 8
+      --kv-cache-dtype fp8
       --enable-auto-tool-choice
-      --tool-call-parser gemma4
+      --tool-call-parser qwen3_coder
+      --reasoning-parser-plugin /parsers/nano_v3_reasoning_parser.py
+      --reasoning-parser nano_v3
+      --trust-remote-code
     environment:
       - HF_TOKEN=${HF_TOKEN}
       - HF_HUB_OFFLINE=1
+      - VLLM_USE_FLASHINFER_MOE_FP4=1
+      - VLLM_FLASHINFER_MOE_BACKEND=throughput
     ports:
       - "127.0.0.1:8001:8000"
     shm_size: 16gb
     volumes:
-      - ${CACHE_DEV}:/root/.cache/huggingface
+      # swarm-nano cache má 'models--...' v rootu (ne v hub/), proto mount přímo do hub/.
+      - ${CACHE_DEV}:/root/.cache/huggingface/hub
+      - ./parsers:/parsers:ro
     networks:
       - internal
     deploy:
@@ -89,8 +103,6 @@ services:
       retries: 5
       start_period: 30s
     depends_on:
-      lab:
-        condition: service_healthy
       dev:
         condition: service_healthy
 
