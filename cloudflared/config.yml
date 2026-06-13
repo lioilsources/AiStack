@@ -27,9 +27,15 @@ ingress:
   # comfyui.ol1n.com → nativní ComfyUI běžící na hostu (:8188).
   # cloudflared je v kontejneru, takže host se reachne přes host.docker.internal
   # (vyžaduje extra_hosts host-gateway v docker-compose.yml).
+  # CF Access App: 0929e4dd-6717-4933-826e-3b6edc44f13b (stejný service token jako llm.ol1n.com)
   - hostname: comfyui.ol1n.com
     service: http://host.docker.internal:8188
     originRequest:
       connectTimeout: 30s
+      access:
+        required: true
+        teamName: ol1n
+        audTag:
+          - 4bc655c0fec0da2ff6a4922a9fc042db2646efb020054735c365ac4cbad29a0b
 
   - service: http_status:404
