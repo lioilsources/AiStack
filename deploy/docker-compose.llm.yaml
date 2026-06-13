@@ -40,37 +40,35 @@ services:
       start_period: 600s
 
   dev:
-    # Nemotron-3-Nano-30B-A3B-NVFP4 (nemotron_h hybrid Mamba-MoE, 3.5B aktiv).
-    # MoE → dekódování čte ~5 GB místo 31 GB → na GB10 řádově rychlejší než dense Gemma-4.
-    # Standardní vLLM image (v0.20.0 podporuje nemotron_h); entrypoint = ["vllm","serve"] → command bez prefixu.
-    # Reasoning model: nano_v3 parser oddělí <think> do reasoning_content, klient dostane čistý content.
+    # Qwen3-32B-AWQ (dense 32B, AWQ 4-bit, ~18 GB weights).
+    # 100+ jazyků vč. čínštiny, arabštiny, svahilštiny → nasazeno pro překlad.
+    # Paměť: GB10 unified pool sdílí s ComfyUI+FLUX (~24 GB). Pevný --kv-cache-memory-bytes =
+    # order-independent cap (model ~18 + KV 8 + ~2 overhead ≈ 28 GiB), zbytek pool zůstane ComfyUI.
+    # --gpu-memory-utilization slouží jen jako startup guard (free >= util*total = 0.40*127 ≈ 51 GiB).
+    # Nativní kontextové okno 40960 tokenů (> 32k; opencode posílá max_tokens 32000 → vyhovuje).
+    # Thinking vypnuto by default v litellm (enable_thinking: false); klient může zapnout.
     image: vllm/vllm-openai:v0.20.0
     container_name: ai-dev
     restart: unless-stopped
     command: >
       ${HF_MODEL_DEV}
       --served-model-name dev
-      --gpu-memory-utilization 0.20
-      --max-model-len 32768
+      --kv-cache-memory-bytes 8589934592
+      --gpu-memory-utilization 0.40
+      --max-model-len 40960
       --max-num-seqs 8
       --kv-cache-dtype fp8
       --enable-auto-tool-choice
-      --tool-call-parser qwen3_coder
-      --reasoning-parser-plugin /parsers/nano_v3_reasoning_parser.py
-      --reasoning-parser nano_v3
+      --tool-call-parser hermes
       --trust-remote-code
     environment:
       - HF_TOKEN=${HF_TOKEN}
       - HF_HUB_OFFLINE=1
-      - VLLM_USE_FLASHINFER_MOE_FP4=1
-      - VLLM_FLASHINFER_MOE_BACKEND=throughput
     ports:
       - "127.0.0.1:8001:8000"
     shm_size: 16gb
     volumes:
-      # swarm-nano cache má 'models--...' v rootu (ne v hub/), proto mount přímo do hub/.
       - ${CACHE_DEV}:/root/.cache/huggingface/hub
-      - ./parsers:/parsers:ro
     networks:
       - internal
     deploy:

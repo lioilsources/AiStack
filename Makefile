@@ -3,11 +3,13 @@ COMPOSE_LLM   := docker compose -f deploy/docker-compose.llm.yaml --env-file .en
 COMPOSE_IMAGE := docker compose -f deploy/docker-compose.image.yaml --env-file .env
 COMPOSE_OCR   := docker compose -f deploy/docker-compose.ocr.yaml --env-file .env
 COMPOSE_SWARM := docker compose -f deploy/docker-compose.swarm.yaml --env-file .env
+COMPOSE_TUNE  := docker compose -f deploy/docker-compose.tune-image.yaml --env-file .env
 
 .PHONY: build up down logs ps \
         up-llm up-image up-ocr \
         down-llm down-image down-ocr \
         up-swarm down-swarm up-swarm-director down-swarm-director \
+        up-tune-image down-tune-image \
         download-flux download-flux-lora download-qwen-vl \
         download-nemotron download-nemotron-coder download-ocr-models \
         gateway-build gateway-run
@@ -60,6 +62,17 @@ up-swarm-director:
 down-swarm-director:
 	$(COMPOSE_SWARM) --profile director stop swarm-director
 	$(COMPOSE_SWARM) --profile director rm -f swarm-director
+
+## Card Forge image-tune module
+# fáze train: stopne 'dev' (uvolní ~28 GB) a spustí builder+validator
+up-tune-image:
+	$(COMPOSE_LLM) stop dev
+	$(COMPOSE_TUNE) up -d
+
+# fáze bulk: shodí builder+validator — paměť zůstane hostovskému ComfyUI na batching
+# (dev zpět: make up-llm)
+down-tune-image:
+	$(COMPOSE_TUNE) down
 
 ## Model downloads (requires HF_TOKEN in .env)
 download-nemotron:

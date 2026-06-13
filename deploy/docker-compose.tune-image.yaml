@@ -1,0 +1,117 @@
+# Card Forge image-tune module — builder LLM + validátor VLM pro fázi 'train'
+#
+# Generátor (ComfyUI s FLUX kontext fp8 + Pony V6 XL) běží nativně na hostu (:8188,
+# comfyui.ol1n.com) — není součástí tohoto stacku. Orchestrátor 'forge' se připojuje
+# z lokální sítě přes gateway :8080 (modely 'builder' a 'validator' routuje hlavní
+# litellm, viz litellm_config.yaml).
+#
+# Fáze train:  make up-tune-image   (stopne 'dev', spustí builder+validator)
+# Fáze bulk:   make down-tune-image (shodí oba — paměť zůstane ComfyUI na batching)
+# Návrat dev:  make up-llm
+#
+# Paměťový rozpočet train fáze (DGX Spark 128 GB UMA, dev stopped):
+#   ComfyUI host (FLUX fp8 ~17 + Pony ~7 + CLIP/VAE ~6)  ≈ 30 GB
+#   tune-builder  Nemotron-Nano NVFP4 + KV               ≈ 18–22 GB
+#   tune-validator Qwen2.5-VL-7B bf16 + KV + vision      ≈ 18–20 GB
+#   celkem                                               ≈ 66–72 GB
+#
+# Env vars: HF_TOKEN, HF_MODEL_TUNE_BUILDER, HF_MODEL_TUNE_VALIDATOR,
+#           CACHE_TUNE_BUILDER, CACHE_TUNE_VALIDATOR
+
+services:
+
+  # ── Builder: tvorba promptů a item listů ────────────────────────────────────
+  # Nemotron-3-Nano-30B-A3B-NVFP4 (MoE, 3.5B active) — konfigurace převzata ze
+  # swarm-nano (docker-compose.swarm.yaml); kontext snížen na 32K (builder
+  # nepotřebuje 256K → menší KV cache).
+  tune-builder:
+    image: vllm/vllm-openai:${SWARM_VLLM_VERSION:-v0.20.0}
+    container_name: tune-builder
+    restart: unless-stopped
+    # entrypoint image je `vllm serve` → command začíná rovnou modelem (jako služba 'dev')
+    command: >
+      ${HF_MODEL_TUNE_BUILDER}
+      --served-model-name builder
+      --gpu-memory-utilization 0.20
+      --max-model-len 32768
+      --max-num-seqs 8
+      --kv-cache-dtype fp8
+      --enable-auto-tool-choice
+      --tool-call-parser qwen3_coder
+      --reasoning-parser-plugin /parsers/nano_v3_reasoning_parser.py
+      --reasoning-parser nano_v3
+      --trust-remote-code
+    environment:
+      - HF_TOKEN=${HF_TOKEN}
+      - HF_HUB_OFFLINE=1
+      - VLLM_USE_FLASHINFER_MOE_FP4=1
+      - VLLM_FLASHINFER_MOE_BACKEND=throughput
+    ports:
+      - "127.0.0.1:8020:8000"
+    shm_size: 8gb
+    volumes:
+      # cache obsahuje models--… přímo (hub layout bez podadresáře hub/)
+      - ${CACHE_TUNE_BUILDER}:/root/.cache/huggingface/hub
+      - ./parsers:/parsers:ro
+    networks:
+      - internal
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8000/v1/models"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 300s
+
+  # ── Validátor: VLM kontrola vygenerovaných karet ────────────────────────────
+  # Qwen2.5-VL-7B-Instruct (bf16, ~16 GB) — stačí na "je tam jedno jasné zvíře,
+  # je to on-style, jsou kritické vady?". Upgrade na 32B-AWQ jen pokud selhává.
+  tune-validator:
+    image: vllm/vllm-openai:${SWARM_VLLM_VERSION:-v0.20.0}
+    container_name: tune-validator
+    restart: unless-stopped
+    command: >
+      ${HF_MODEL_TUNE_VALIDATOR}
+      --served-model-name validator
+      --gpu-memory-utilization 0.25
+      --max-model-len 16384
+      --max-num-seqs 4
+      --kv-cache-dtype fp8
+      --limit-mm-per-prompt '{"image":4}'
+      --trust-remote-code
+    environment:
+      - HF_TOKEN=${HF_TOKEN}
+      - HF_HUB_OFFLINE=1
+    ports:
+      - "127.0.0.1:8021:8000"
+    shm_size: 8gb
+    volumes:
+      # cache má podadresář hub/ (stažen přes --cache-dir → hub layout uvnitř)
+      - ${CACHE_TUNE_VALIDATOR}:/root/.cache/huggingface
+    networks:
+      - internal
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8000/v1/models"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 300s
+
+networks:
+  # připojení do sítě hlavního stacku, aby na služby viděl litellm/gateway
+  internal:
+    external: true
+    name: ai
