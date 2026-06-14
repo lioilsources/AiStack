@@ -263,4 +263,5 @@ services:
 
 networks:
   internal:
-    driver: bridge
+    external: true
+    name: ai

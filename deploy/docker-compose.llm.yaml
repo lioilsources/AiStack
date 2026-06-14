@@ -40,15 +40,13 @@ services:
       start_period: 600s
 
   dev:
-    # Qwen3-32B-AWQ (dense 32B, AWQ 4-bit, ~18 GB weights).
-    # 100+ jazyků vč. čínštiny, arabštiny, svahilštiny → nasazeno pro překlad.
-    # Paměť: GB10 unified pool sdílí s ComfyUI+FLUX (~24 GB). Pevný --kv-cache-memory-bytes =
+    # Qwen3-32B-AWQ (dense 32B, AWQ 4-bit, ~18 GiB) — obecný dev LLM.
+    # Překlady: docker-compose.translate.yaml (vlastní tuning pro hromadné překlady).
+    # Paměť: GB10 unified pool sdílí s ComfyUI+FLUX (~24 GiB). Pevný --kv-cache-memory-bytes =
     # order-independent cap (model ~18 + KV 8 + ~2 overhead ≈ 28 GiB), zbytek pool zůstane ComfyUI.
     # --gpu-memory-utilization slouží jen jako startup guard (free >= util*total = 0.22*122 ≈ 27 GiB).
     # Sníženo z 0.40: po tune-image stacku CUDA driver drží ~90 GiB reserved pages i po zastavení
-    # kontejnerů, takže startup guard 0.40 (= 49 GiB required) selhával. Skutečné alokace:
-    # model ~18 GiB (AWQ 4-bit) + KV cache 8 GiB → 0.22 bezpečně ověřuje dostupnost.
-    # max_model_len=32768: vLLM potřebuje 10 GiB KV pro 40960, ale kv_cache_memory_bytes=8 GiB → max 32768. Opencode posílá max_tokens 32000 → vyhovuje.
+    # kontejnerů → startup guard 0.40 (= 49 GiB required) selhával.
     # Thinking vypnuto by default v litellm (enable_thinking: false); klient může zapnout.
     image: vllm/vllm-openai:v0.20.0
     container_name: ai-dev
@@ -108,5 +106,5 @@ services:
 
 networks:
   internal:
-    driver: bridge
+    external: true
     name: ai

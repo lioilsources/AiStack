@@ -24,6 +24,17 @@ model_list:
         chat_template_kwargs:
           enable_thinking: false
 
+  # Translate stack (docker-compose.translate.yaml) — hromadné překlady, 32 souběžných sekvencí.
+  # Spustit: make up-translate
+  - model_name: llm-translate
+    litellm_params:
+      model: openai/translate
+      api_base: http://translate:8000/v1
+      api_key: dummy
+      extra_body:
+        chat_template_kwargs:
+          enable_thinking: false
+
   # Card Forge image-tune stack (docker-compose.tune-image.yaml) — služby běží jen
   # během fáze 'train' (make up-tune-image); jinak routy vrací 502, což nevadí.
   - model_name: builder
