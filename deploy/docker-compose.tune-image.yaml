@@ -32,7 +32,7 @@ services:
     command: >
       ${HF_MODEL_TUNE_BUILDER}
       --served-model-name builder
-      --gpu-memory-utilization 0.20
+      --gpu-memory-utilization 0.30
       --max-model-len 32768
       --max-num-seqs 8
       --enable-auto-tool-choice
