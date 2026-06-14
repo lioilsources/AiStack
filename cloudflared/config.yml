@@ -17,6 +17,13 @@ ingress:
       httpHostHeader: llm.ol1n.com
       originServerName: ""
 
+  # code.ol1n.com → swarm-litellm (:4001) pro OpenCode orchestrator.
+  # swarm-litellm je na hostu (izolovaná swarm síť, exponuje na 127.0.0.1:4001).
+  - hostname: code.ol1n.com
+    service: http://host.docker.internal:4001
+    originRequest:
+      connectTimeout: 30s
+
   # comfyui.ol1n.com → nativní ComfyUI běžící na hostu (:8188).
   # cloudflared je v kontejneru, takže host se reachne přes host.docker.internal
   # (vyžaduje extra_hosts host-gateway v docker-compose.yml).

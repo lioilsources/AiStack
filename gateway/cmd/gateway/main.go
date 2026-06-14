@@ -109,10 +109,12 @@ func main() {
 
 	litellmURL := envOr("LITELLM_URL", "http://litellm:4000")
 	ocrAPIURL := envOr("OCR_API_URL", "http://ocr-api:8003")
+	controllerURL := envOr("CONTROLLER_URL", "http://controller:8090")
 	addr := envOr("LISTEN_ADDR", ":8080")
 
 	llmProxy := newProxy(litellmURL)
 	ocrProxy := newProxy(ocrAPIURL)
+	controllerProxy := newProxy(controllerURL)
 
 	mux := http.NewServeMux()
 
@@ -126,6 +128,9 @@ func main() {
 
 	// Image generation/editing is handled out-of-band by ComfyUI
 	// (comfyui.ol1n.com), not through this gateway.
+
+	// Stack controller — POST /ctrl/activate?model=lab|ocr|swarm|tune, GET /ctrl/status, …
+	mux.Handle("/ctrl/", http.StripPrefix("/ctrl", controllerProxy))
 
 	// OCR
 	mux.Handle("/v1/ocr", ocrProxy)
@@ -147,6 +152,7 @@ func main() {
 		"addr", addr,
 		"llm", litellmURL,
 		"ocr", ocrAPIURL,
+		"controller", controllerURL,
 	)
 
 	if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {

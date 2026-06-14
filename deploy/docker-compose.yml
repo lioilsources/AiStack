@@ -1,4 +1,4 @@
-# AiStack — root deployment entrypoint (infra: LLM + gateway + Cloudflare)
+# AiStack — root deployment entrypoint (infra: LLM + gateway + controller + Cloudflare)
 #
 # Client services (ocr-api) live in their own repos and join the
 # 'ai' Docker network declared here. Image generation is served separately by
@@ -14,6 +14,25 @@ include:
 
 services:
 
+  controller:
+    build:
+      context: ../services/controller-manager
+    image: aistack/controller:latest
+    container_name: ai-controller
+    restart: unless-stopped
+    environment:
+      - INFERENCE_CONFIG=/config/models.yaml
+      - INFERENCE_STATE=/var/lib/controller/state.json
+      - INFERENCE_ADDR=:8090
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ../services/controller-manager/config:/config:ro
+      - controller-state:/var/lib/controller
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks:
+      - internal
+
   gateway:
     build:
       context: ../gateway
@@ -25,6 +44,7 @@ services:
     environment:
       - LITELLM_URL=http://litellm:4000
       - OCR_API_URL=http://ocr-api:8003
+      - CONTROLLER_URL=http://controller:8090
     networks:
       - internal
     healthcheck:
@@ -72,3 +92,6 @@ networks:
   internal:
     driver: bridge
     name: ai
+
+volumes:
+  controller-state:
