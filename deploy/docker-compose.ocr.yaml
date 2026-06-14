@@ -12,7 +12,7 @@ services:
     volumes:
       - ${CACHE_OCR}:/models
     networks:
-      - ai
+      - internal
     depends_on:
       ocr-redis:
         condition: service_healthy
@@ -32,7 +32,7 @@ services:
   ocr-redis:
     image: redis:7-alpine
     networks:
-      - ai
+      - internal
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
@@ -40,5 +40,6 @@ services:
       retries: 5
 
 networks:
-  ai:
+  internal:
     external: true
+    name: ai

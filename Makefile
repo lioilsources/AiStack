@@ -3,11 +3,13 @@ COMPOSE_LLM   := docker compose -f deploy/docker-compose.llm.yaml --env-file .en
 COMPOSE_IMAGE := docker compose -f deploy/docker-compose.image.yaml --env-file .env
 COMPOSE_OCR   := docker compose -f deploy/docker-compose.ocr.yaml --env-file .env
 COMPOSE_SWARM := docker compose -f deploy/docker-compose.swarm.yaml --env-file .env
-COMPOSE_TUNE  := docker compose -f deploy/docker-compose.tune-image.yaml --env-file .env
+COMPOSE_TUNE      := docker compose -f deploy/docker-compose.tune-image.yaml --env-file .env
+COMPOSE_TRANSLATE := docker compose -f deploy/docker-compose.translate.yaml --env-file .env
 
 .PHONY: build up down logs ps \
         up-llm up-image up-ocr \
         down-llm down-image down-ocr \
+        up-translate down-translate \
         up-swarm down-swarm up-swarm-director down-swarm-director \
         up-tune-image down-tune-image \
         download-flux download-flux-lora download-qwen-vl \
@@ -48,6 +50,13 @@ down-image:
 
 down-ocr:
 	$(COMPOSE_OCR) down
+
+## Translate module
+up-translate:
+	$(COMPOSE_TRANSLATE) up -d
+
+down-translate:
+	$(COMPOSE_TRANSLATE) down
 
 ## SwarmBattle LLM module
 up-swarm:

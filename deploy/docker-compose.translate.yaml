@@ -1,0 +1,60 @@
+# Translate module: Qwen3-32B-AWQ nakonfigurovaný pro hromadné překlady.
+#
+# Standalone: docker compose -f deploy/docker-compose.translate.yaml up -d
+#           → nebo: make up-translate
+#
+# Paměť: sdílí GPU pool s 'dev' (readonly mount stejného cache).
+# Bez rebootu (CUDA driver drží ~90 GiB reserved pages) není dost místa
+# pro obě instance najednou — v takovém případě nejdřív: make down-llm.
+# Po rebootu (free > 100 GiB) obě instance koexistují bez problémů.
+#
+# Tuning pro překlady:
+#   --max-num-seqs 32      překlady jsou krátké → lze nasytit více slotů
+#   --max-model-len 4096   překlady nepotřebují 32K kontext
+#   --kv-cache-memory-bytes 4 GiB  stačí: 32 seqs × ~125 MB při 4K ctx
+# Tyto hodnoty sem patří, nikoli do docker-compose.llm.yaml (dev = obecný LLM).
+
+services:
+
+  translate:
+    image: vllm/vllm-openai:v0.20.0
+    container_name: ai-translate
+    restart: unless-stopped
+    command: >
+      ${HF_MODEL_DEV}
+      --served-model-name translate
+      --kv-cache-memory-bytes 4294967296
+      --gpu-memory-utilization 0.22
+      --max-model-len 4096
+      --max-num-seqs 32
+      --enable-auto-tool-choice
+      --tool-call-parser hermes
+      --trust-remote-code
+    environment:
+      - HF_TOKEN=${HF_TOKEN}
+      - HF_HUB_OFFLINE=1
+    ports:
+      - "127.0.0.1:8004:8000"
+    shm_size: 16gb
+    volumes:
+      - ${CACHE_DEV}:/root/.cache/huggingface/hub
+    networks:
+      - internal
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8000/v1/models"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 300s
+
+networks:
+  internal:
+    external: true
+    name: ai
