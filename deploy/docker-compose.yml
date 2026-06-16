@@ -20,6 +20,8 @@ services:
     image: aistack/controller:latest
     container_name: ai-controller
     restart: unless-stopped
+    env_file:
+      - ../.env
     environment:
       - INFERENCE_CONFIG=/config/models.yaml
       - INFERENCE_STATE=/var/lib/controller/state.json
@@ -27,6 +29,10 @@ services:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - ../services/controller-manager/config:/config:ro
+      # Compose soubory řízených stacků — identická cesta host↔kontejner,
+      # protože 'docker compose' běží uvnitř kontejneru, ale bind-mount zdroje
+      # předává hostovskému daemonu přes docker.sock (cesty se musí shodovat).
+      - /home/ol1n/deploy/AiStack/deploy:/home/ol1n/deploy/AiStack/deploy:ro
       - controller-state:/var/lib/controller
     extra_hosts:
       - "host.docker.internal:host-gateway"

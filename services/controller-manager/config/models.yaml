@@ -1,23 +1,29 @@
 models:
   lab:
-    compose_file: /home/ol1n/ai-stack/deploy/docker-compose.llm.yaml
+    compose_file: /home/ol1n/deploy/AiStack/deploy/docker-compose.llm.yaml
     services: [lab, litellm]
-    health_url: http://host.docker.internal:8000/v1/models
+    health_url: http://ai-lab:8000/v1/models
     health_timeout: 660s   # lab start_period=600s + buffer
     alias: lab
 
   ocr:
-    compose_file: /home/ol1n/ai-stack/deploy/docker-compose.ocr.yaml
-    health_url: http://host.docker.internal:8003/health
+    compose_file: /home/ol1n/deploy/AiStack/deploy/docker-compose.ocr.yaml
+    health_url: http://ocr-api:8003/health
     alias: ocr
 
   swarm:
-    compose_file: /home/ol1n/ai-stack/deploy/docker-compose.swarm.yaml
-    health_url: http://host.docker.internal:4001/health
+    compose_file: /home/ol1n/deploy/AiStack/deploy/docker-compose.swarm.yaml
+    health_url: http://swarm-litellm:4000/health
     health_timeout: 600s
     alias: swarm
 
   tune:
-    compose_file: /home/ol1n/ai-stack/deploy/docker-compose.tune.yaml
-    health_url: http://host.docker.internal:8007/health
+    compose_file: /home/ol1n/deploy/AiStack/deploy/docker-compose.tune-image.yaml
+    health_url: http://tune-builder:8000/v1/models
     alias: tune
+
+  translate:
+    compose_file: /home/ol1n/deploy/AiStack/deploy/docker-compose.translate.yaml
+    health_url: http://ai-translate:8000/v1/models
+    health_timeout: 360s   # translate start_period=300s + buffer
+    alias: translate

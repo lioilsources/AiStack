@@ -59,7 +59,7 @@ func (h *Handler) activate(w http.ResponseWriter, r *http.Request) {
 		prev, ok := h.cfg.Models[previous]
 		if ok {
 			slog.Info("stopping model", "model", previous)
-			if err := h.runner.Down(r.Context(), prev.ComposeFile, prev.Services); err != nil {
+			if err := h.runner.Down(r.Context(), prev.ComposeFile, prev.Alias, prev.Services); err != nil {
 				slog.Warn("failed to stop previous model", "model", previous, "err", err)
 			}
 		}
@@ -67,7 +67,7 @@ func (h *Handler) activate(w http.ResponseWriter, r *http.Request) {
 
 	// Start requested model.
 	slog.Info("starting model", "model", alias)
-	if err := h.runner.Up(r.Context(), model.ComposeFile, model.Services); err != nil {
+	if err := h.runner.Up(r.Context(), model.ComposeFile, model.Alias, model.Services); err != nil {
 		writeError(w, http.StatusInternalServerError, "start model: "+err.Error())
 		if previous != "" && previous != alias {
 			h.tryRestore(r.Context(), previous)
@@ -102,7 +102,7 @@ func (h *Handler) tryRestore(ctx context.Context, alias string) {
 		return
 	}
 	slog.Info("restoring previous model", "model", alias)
-	if err := h.runner.Up(ctx, model.ComposeFile, model.Services); err != nil {
+	if err := h.runner.Up(ctx, model.ComposeFile, model.Alias, model.Services); err != nil {
 		slog.Error("restore failed", "model", alias, "err", err)
 		return
 	}
@@ -135,7 +135,7 @@ func (h *Handler) deactivate(w http.ResponseWriter, r *http.Request) {
 
 	for alias, model := range h.cfg.Models {
 		slog.Info("stopping model", "model", alias)
-		if err := h.runner.Down(r.Context(), model.ComposeFile, model.Services); err != nil {
+		if err := h.runner.Down(r.Context(), model.ComposeFile, model.Alias, model.Services); err != nil {
 			slog.Warn("stop failed", "model", alias, "err", err)
 		}
 	}

@@ -19,12 +19,12 @@ type mockRunner struct {
 	upErr     error
 }
 
-func (m *mockRunner) Up(_ context.Context, composeFile string, _ []string) error {
+func (m *mockRunner) Up(_ context.Context, composeFile, _ string, _ []string) error {
 	m.upCalls = append(m.upCalls, composeFile)
 	return m.upErr
 }
 
-func (m *mockRunner) Down(_ context.Context, composeFile string, _ []string) error {
+func (m *mockRunner) Down(_ context.Context, composeFile, _ string, _ []string) error {
 	m.downCalls = append(m.downCalls, composeFile)
 	return nil
 }
