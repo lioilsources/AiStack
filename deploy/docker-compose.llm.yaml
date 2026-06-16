@@ -2,17 +2,20 @@
 #
 # Standalone: docker compose -f deploy/docker-compose.llm.yaml up -d
 # Env vars:   HF_TOKEN, VLLM_VERSION, HF_MODEL_LAB, HF_MODEL_DEV, CACHE_LAB, CACHE_DEV
+#             Překlady: HF_MODEL_TRANSLATE, CACHE_TRANSLATE (docker-compose.translate.yaml)
 
 services:
 
   lab:
-    # Nepoužívá se (dev jede jako jediná instance). Profile 'lab' brání náhodnému startu přes `up`.
+    # gpt-oss-120b — nejsilnější model, spouštět jen na vyžádání (make up-lab / profile: lab).
+    # llm-lab alias v LiteLLM míří primárně sem, fallbackuje na dev (Gemma) a další stacky.
     profiles: ["lab"]
     image: nvcr.io/nvidia/vllm:${VLLM_VERSION}
     container_name: ai-lab
     restart: unless-stopped
     command: >
       vllm serve ${HF_MODEL_LAB}
+      --served-model-name lab
       --gpu-memory-utilization 0.7
       --max-model-len 131072
     environment:
@@ -40,26 +43,24 @@ services:
       start_period: 600s
 
   dev:
-    # Qwen3-32B-AWQ (dense 32B, AWQ 4-bit, ~18 GiB) — obecný dev LLM.
-    # Překlady: docker-compose.translate.yaml (vlastní tuning pro hromadné překlady).
-    # Paměť: GB10 unified pool sdílí s ComfyUI+FLUX (~24 GiB). Pevný --kv-cache-memory-bytes =
-    # order-independent cap (model ~18 + KV 8 + ~2 overhead ≈ 28 GiB), zbytek pool zůstane ComfyUI.
-    # --gpu-memory-utilization slouží jen jako startup guard (free >= util*total = 0.22*122 ≈ 27 GiB).
-    # Sníženo z 0.40: po tune-image stacku CUDA driver drží ~90 GiB reserved pages i po zastavení
-    # kontejnerů → startup guard 0.40 (= 49 GiB required) selhával.
+    # Gemma-4-31B-IT-NVFP4 (~31 GiB NVFP4) — obecný dev LLM; llm-lab sem fallbackuje když lab neběží.
+    # Překlady: docker-compose.translate.yaml (vlastní HF_MODEL_TRANSLATE, oddělen od dev).
+    # Paměť: model ~31 + KV 8 + overhead ≈ 40 GiB. startup guard: 0.35*128 ≈ 45 GiB required.
+    # Po tune-image CUDA driver může držet reserved pages — pokud start selže, snižit na 0.28.
     # Thinking vypnuto by default v litellm (enable_thinking: false); klient může zapnout.
-    image: vllm/vllm-openai:v0.20.0
+    # tool-call-parser: Gemma-4 používá pythonic formát; ověřit pokud tool calling nefunguje.
+    image: nvcr.io/nvidia/vllm:${VLLM_VERSION}
     container_name: ai-dev
     restart: unless-stopped
     command: >
       ${HF_MODEL_DEV}
       --served-model-name dev
       --kv-cache-memory-bytes 8589934592
-      --gpu-memory-utilization 0.22
+      --gpu-memory-utilization 0.35
       --max-model-len 32768
       --max-num-seqs 8
       --enable-auto-tool-choice
-      --tool-call-parser hermes
+      --tool-call-parser pythonic
       --trust-remote-code
     environment:
       - HF_TOKEN=${HF_TOKEN}
@@ -68,7 +69,7 @@ services:
       - "127.0.0.1:8001:8000"
     shm_size: 16gb
     volumes:
-      - ${CACHE_DEV}:/root/.cache/huggingface/hub
+      - ${CACHE_DEV}:/root/.cache/huggingface
     networks:
       - internal
     deploy:

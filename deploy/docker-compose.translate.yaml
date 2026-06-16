@@ -21,7 +21,7 @@ services:
     container_name: ai-translate
     restart: unless-stopped
     command: >
-      ${HF_MODEL_DEV}
+      ${HF_MODEL_TRANSLATE}
       --served-model-name translate
       --kv-cache-memory-bytes 4294967296
       --gpu-memory-utilization 0.22
@@ -37,7 +37,7 @@ services:
       - "127.0.0.1:8004:8000"
     shm_size: 16gb
     volumes:
-      - ${CACHE_DEV}:/root/.cache/huggingface/hub
+      - ${CACHE_TRANSLATE}:/root/.cache/huggingface/hub
     networks:
       - internal
     deploy:
