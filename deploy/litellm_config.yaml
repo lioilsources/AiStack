@@ -3,19 +3,19 @@ litellm_settings:
   drop_streaming_with_functions: true
 
 router_settings:
-  # llm-lab zkouší každý backend jednou — při connection refused přejde na další.
+  # llm-lab fallback chain: při chybě primárního backendu zkouší fallbacky v pořadí.
+  # Explicitní fallbacks jsou spolehlivější než multi-entry load balancing.
   num_retries: 0
   timeout: 5
+  fallbacks:
+    - llm-lab: ["llm-lab-dev", "llm-lab-tune", "llm-lab-translate", "llm-lab-director"]
+    - llm-lab-dev: ["llm-lab-tune", "llm-lab-translate", "llm-lab-director"]
 
 model_list:
-  # llm-lab: "best available LLM" alias s fallback chainem napříč stacky.
-  # LiteLLM zkouší entries v pořadí; nedostupný backend (connection refused) přeskočí.
-  # Priorita: lab (gpt-oss-120b) → dev (Gemma-4-31B) → tune-builder (Nemotron-30B)
-  #           → translate (Qwen3-32B) → swarm-director (Nemotron-120B, on-demand)
-  #
+  # llm-lab: primárně lab service (gpt-oss-120b); fallback chain viz router_settings.
   # thinking vypnuto by default; klient zapne přes chat_template_kwargs.enable_thinking=true.
 
-  # 1. lab service — gpt-oss-120b (profile: lab, spouštět: make up-lab)
+  # Primary: lab service — gpt-oss-120b (profile: lab, spouštět: make up-lab)
   - model_name: llm-lab
     litellm_params:
       model: openai/lab
@@ -25,8 +25,8 @@ model_list:
         chat_template_kwargs:
           enable_thinking: false
 
-  # 2. dev service — Gemma-4-31B-IT-NVFP4 (vždy běží se stackem)
-  - model_name: llm-lab
+  # Fallback 1: dev service — Gemma-4-31B-IT-NVFP4
+  - model_name: llm-lab-dev
     litellm_params:
       model: openai/dev
       api_base: http://dev:8000/v1
@@ -35,8 +35,8 @@ model_list:
         chat_template_kwargs:
           enable_thinking: false
 
-  # 3. tune-builder — Nemotron-Nano-30B (běží jen při make up-tune-image)
-  - model_name: llm-lab
+  # Fallback 2: tune-builder — Nemotron-Nano-30B (make up-tune-image)
+  - model_name: llm-lab-tune
     litellm_params:
       model: openai/builder
       api_base: http://tune-builder:8000/v1
@@ -45,8 +45,8 @@ model_list:
         chat_template_kwargs:
           enable_thinking: false
 
-  # 4. translate — Qwen3-32B-AWQ (běží jen při make up-translate)
-  - model_name: llm-lab
+  # Fallback 3: translate — Qwen3-32B-AWQ (make up-translate)
+  - model_name: llm-lab-translate
     litellm_params:
       model: openai/translate
       api_base: http://translate:8000/v1
@@ -55,8 +55,8 @@ model_list:
         chat_template_kwargs:
           enable_thinking: false
 
-  # 5. swarm-director — Nemotron-Super-120B (on-demand, profile: director)
-  - model_name: llm-lab
+  # Fallback 4: swarm-director — Nemotron-Super-120B (on-demand, profile: director)
+  - model_name: llm-lab-director
     litellm_params:
       model: openai/swarm-director
       api_base: http://swarm-director:8000/v1
