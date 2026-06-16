@@ -49,7 +49,8 @@ services:
     # Po tune-image CUDA driver může držet reserved pages — pokud start selže, snižit na 0.28.
     # Thinking vypnuto by default v litellm (enable_thinking: false); klient může zapnout.
     # tool-call-parser: Gemma-4 používá pythonic formát; ověřit pokud tool calling nefunguje.
-    image: nvcr.io/nvidia/vllm:${VLLM_VERSION}
+    # Image: community vllm-openai (stejný jako swarm) — nvidia image vyžaduje driver 595+.
+    image: vllm/vllm-openai:v0.20.0
     container_name: ai-dev
     restart: unless-stopped
     command: >
@@ -58,6 +59,7 @@ services:
       --kv-cache-memory-bytes 8589934592
       --gpu-memory-utilization 0.35
       --max-model-len 32768
+      --max-num-batched-tokens 4096
       --max-num-seqs 8
       --enable-auto-tool-choice
       --tool-call-parser pythonic
