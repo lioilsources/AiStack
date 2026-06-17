@@ -82,7 +82,7 @@ model_list:
       model: openai/translate
       api_base: http://translate:8000/v1
       api_key: dummy
-      timeout: 120
+      timeout: 300
       extra_body:
         chat_template_kwargs:
           enable_thinking: false
