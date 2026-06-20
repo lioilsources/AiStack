@@ -17,10 +17,9 @@ ingress:
       httpHostHeader: llm.ol1n.com
       originServerName: ""
 
-  # code.ol1n.com → swarm-litellm (:4001) pro OpenCode orchestrator.
-  # swarm-litellm je na hostu (izolovaná swarm síť, exponuje na 127.0.0.1:4001).
+  # code.ol1n.com → swarm-litellm v síti ai (přímý přístup, bez host bridge).
   - hostname: code.ol1n.com
-    service: http://host.docker.internal:4001
+    service: http://swarm-litellm:4000
     originRequest:
       connectTimeout: 30s
 
