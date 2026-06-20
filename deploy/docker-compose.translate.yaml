@@ -17,11 +17,11 @@
 services:
 
   translate:
-    image: vllm/vllm-openai:v0.20.0
-    container_name: ai-translate
+    image: nvcr.io/nvidia/vllm:${VLLM_VERSION}
+    container_name: translate
     restart: unless-stopped
     command: >
-      ${HF_MODEL_TRANSLATE}
+      vllm serve ${HF_MODEL_TRANSLATE}
       --served-model-name translate
       --kv-cache-memory-bytes 4294967296
       --gpu-memory-utilization 0.22
