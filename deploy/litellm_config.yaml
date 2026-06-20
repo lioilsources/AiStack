@@ -3,20 +3,13 @@ litellm_settings:
   drop_streaming_with_functions: true
 
 router_settings:
-  # llm-lab fallback chain: při chybě primárního backendu zkouší fallbacky v pořadí.
-  # Explicitní fallbacks jsou spolehlivější než multi-entry load balancing.
   num_retries: 0
   timeout: 5
   fallbacks:
-    - llm-lab: ["llm-lab-dev", "llm-lab-tune", "llm-lab-translate", "llm-lab-director"]
-    - llm-lab-dev: ["llm-lab-tune", "llm-lab-translate", "llm-lab-director"]
+    - lab: ["dev"]
 
 model_list:
-  # llm-lab: primárně lab service (gpt-oss-120b); fallback chain viz router_settings.
-  # thinking vypnuto by default; klient zapne přes chat_template_kwargs.enable_thinking=true.
-
-  # Primary: lab service — gpt-oss-120b (profile: lab, spouštět: make up-lab)
-  - model_name: llm-lab
+  - model_name: lab
     litellm_params:
       model: openai/lab
       api_base: http://lab:8000/v1
@@ -25,59 +18,17 @@ model_list:
         chat_template_kwargs:
           enable_thinking: false
 
-  # Fallback 1: dev service — Gemma-4-31B-IT-NVFP4
-  - model_name: llm-lab-dev
+  - model_name: dev
     litellm_params:
       model: openai/dev
       api_base: http://dev:8000/v1
       api_key: dummy
+      timeout: 300
       extra_body:
         chat_template_kwargs:
           enable_thinking: false
 
-  # Fallback 2: tune-builder — Nemotron-Nano-30B (make up-tune-image)
-  - model_name: llm-lab-tune
-    litellm_params:
-      model: openai/builder
-      api_base: http://tune-builder:8000/v1
-      api_key: dummy
-      extra_body:
-        chat_template_kwargs:
-          enable_thinking: false
-
-  # Fallback 3: translate — Qwen3-32B-AWQ (make up-translate)
-  - model_name: llm-lab-translate
-    litellm_params:
-      model: openai/translate
-      api_base: http://translate:8000/v1
-      api_key: dummy
-      extra_body:
-        chat_template_kwargs:
-          enable_thinking: false
-
-  # Fallback 4: swarm-director — Nemotron-Super-120B (on-demand, profile: director)
-  - model_name: llm-lab-director
-    litellm_params:
-      model: openai/swarm-director
-      api_base: http://swarm-director:8000/v1
-      api_key: dummy
-      extra_body:
-        chat_template_kwargs:
-          enable_thinking: false
-
-  # llm-dev: dev service (Gemma-4-31B-IT-NVFP4)
-  - model_name: llm-dev
-    litellm_params:
-      model: openai/dev
-      api_base: http://dev:8000/v1
-      api_key: dummy
-      extra_body:
-        chat_template_kwargs:
-          enable_thinking: false
-
-  # Translate stack (docker-compose.translate.yaml) — hromadné překlady, 32 souběžných sekvencí.
-  # Spustit: make up-translate
-  - model_name: llm-translate
+  - model_name: translate
     litellm_params:
       model: openai/translate
       api_base: http://translate:8000/v1
@@ -87,19 +38,29 @@ model_list:
         chat_template_kwargs:
           enable_thinking: false
 
-  # Card Forge image-tune stack (docker-compose.tune-image.yaml) — služby běží jen
-  # během fáze 'train' (make up-tune-image); jinak routy vrací 502, což nevadí.
-  - model_name: builder
+  - model_name: tune-builder
     litellm_params:
-      model: openai/builder
+      model: openai/tune-builder
       api_base: http://tune-builder:8000/v1
       api_key: dummy
+      timeout: 300
       extra_body:
         chat_template_kwargs:
           enable_thinking: false
 
-  - model_name: validator
+  - model_name: tune-validator
     litellm_params:
-      model: openai/validator
+      model: openai/tune-validator
       api_base: http://tune-validator:8000/v1
       api_key: dummy
+      timeout: 300
+
+  - model_name: swarm-director
+    litellm_params:
+      model: openai/swarm-director
+      api_base: http://swarm-director:8000/v1
+      api_key: dummy
+      timeout: 300
+      extra_body:
+        chat_template_kwargs:
+          enable_thinking: false

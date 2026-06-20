@@ -11,7 +11,7 @@ services:
     # llm-lab alias v LiteLLM míří primárně sem, fallbackuje na dev (Gemma) a další stacky.
     profiles: ["lab"]
     image: nvcr.io/nvidia/vllm:${VLLM_VERSION}
-    container_name: ai-lab
+    container_name: lab
     restart: unless-stopped
     command: >
       vllm serve ${HF_MODEL_LAB}
@@ -49,9 +49,10 @@ services:
     # Po tune-image CUDA driver může držet reserved pages — pokud start selže, snižit na 0.28.
     # Thinking vypnuto by default v litellm (enable_thinking: false); klient může zapnout.
     # tool-call-parser: Gemma-4 používá pythonic formát; ověřit pokud tool calling nefunguje.
-    # Image: community vllm-openai (stejný jako swarm) — nvidia image vyžaduje driver 595+.
+    # nvidia/vllm 26.03 (vLLM 0.17.1) nepodporuje Gemma-4 (gemma4 arch); vyžaduje vLLM 0.20+.
+    # Přepnout na nvidia image až bude 26.05+ nebo nová release s Gemma-4 support.
     image: vllm/vllm-openai:v0.20.0
-    container_name: ai-dev
+    container_name: dev
     restart: unless-stopped
     command: >
       ${HF_MODEL_DEV}
@@ -90,7 +91,7 @@ services:
 
   litellm:
     image: ghcr.io/berriai/litellm:main-latest
-    container_name: ai-litellm
+    container_name: litellm
     restart: unless-stopped
     command: --config /app/config.yaml --port 4000
     volumes:
