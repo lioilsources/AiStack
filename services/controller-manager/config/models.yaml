@@ -26,6 +26,12 @@ models:
     health_url: http://tune-builder:8000/v1/models
     alias: tune-builder
 
+  swarm:
+    compose_file: /home/ol1n/deploy/AiStack/deploy/docker-compose.swarm.yaml
+    health_url: http://swarm-litellm:4000/health
+    health_timeout: 600s
+    alias: swarm
+
   swarm-director:
     compose_file: /home/ol1n/deploy/AiStack/deploy/docker-compose.swarm.yaml
     services: [swarm-director]

@@ -24,9 +24,3 @@ model_list:
       api_base: http://swarm-director:8000/v1
       api_key: dummy
 
-  # Tier L4 — RAG retrieval (8B UltraLong, 4M context)
-  - model_name: swarm-rag
-    litellm_params:
-      model: openai/swarm-rag
-      api_base: http://swarm-rag:8000/v1
-      api_key: dummy

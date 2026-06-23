@@ -18,12 +18,11 @@ services:
     container_name: swarm-nano
     restart: unless-stopped
     command: >
-      vllm serve ${HF_MODEL_SWARM_NANO}
+      ${HF_MODEL_SWARM_NANO}
       --served-model-name swarm-nano
       --gpu-memory-utilization 0.15
-      --max-model-len 262144
-      --max-num-seqs 8
-      --kv-cache-dtype fp8
+      --max-model-len 32768
+      --max-num-seqs 4
       --enable-auto-tool-choice
       --tool-call-parser qwen3_coder
       --reasoning-parser-plugin /parsers/nano_v3_reasoning_parser.py
@@ -38,7 +37,7 @@ services:
       - "127.0.0.1:8010:8000"
     shm_size: 8gb
     volumes:
-      - ${CACHE_SWARM_NANO}:/root/.cache/huggingface
+      - ${CACHE_SWARM_NANO}:/root/.cache/huggingface/hub
       - ./parsers:/parsers:ro
     networks:
       - internal
@@ -57,29 +56,27 @@ services:
       start_period: 300s
 
   # ── Tier L2: Coder (code generation, always resident) ──────────────────────
-  # Default: microsoft/Phi-4 (~14 GB, strong at code)
-  # Upgrade:  nvidia/Llama-3_3-Nemotron-Super-49B-v1 Q4 (~28 GB, better reasoning)
-  # Switch via HF_MODEL_SWARM_CODER env var — see .env.example
+  # NGC vLLM + NVFP4 — Experiment C; model swap via HF_MODEL_SWARM_CODER
   swarm-coder:
-    image: vllm/vllm-openai:${SWARM_VLLM_VERSION}
+    image: nvcr.io/nvidia/vllm:${VLLM_VERSION}
     container_name: swarm-coder
     restart: unless-stopped
     command: >
       vllm serve ${HF_MODEL_SWARM_CODER}
       --served-model-name swarm-coder
-      --gpu-memory-utilization 0.14
+      --gpu-memory-utilization 0.10
       --max-model-len 32768
       --enable-auto-tool-choice
       --tool-call-parser pythonic
       --trust-remote-code
     environment:
       - HF_TOKEN=${HF_TOKEN}
-      - HF_HUB_OFFLINE=1
+      - VLLM_NVFP4_GEMM_BACKEND=marlin
     ports:
       - "127.0.0.1:8011:8000"
     shm_size: 8gb
     volumes:
-      - ${CACHE_SWARM_CODER}:/root/.cache/huggingface
+      - ${CACHE_SWARM_CODER}:/root/.cache/huggingface/hub
     networks:
       - internal
     deploy:
@@ -108,7 +105,7 @@ services:
     profiles:
       - director
     command: >
-      vllm serve ${HF_MODEL_SWARM_DIRECTOR}
+      ${HF_MODEL_SWARM_DIRECTOR}
       --served-model-name swarm-director
       --gpu-memory-utilization 0.60
       --max-model-len 262144
@@ -127,7 +124,7 @@ services:
       - "127.0.0.1:8012:8000"
     shm_size: 32gb
     volumes:
-      - ${CACHE_SWARM_DIRECTOR}:/root/.cache/huggingface
+      - ${CACHE_SWARM_DIRECTOR}:/root/.cache/huggingface/hub
     networks:
       - internal
     deploy:
@@ -146,14 +143,16 @@ services:
 
   # ── Tier L4: RAG / KB Retrieval (long-context, always resident) ─────────────
   # Llama-3.1-Nemotron-8B-UltraLong-4M-Instruct: 4M context window
-  # ~16 GB BF16 — use for injecting entire ShaderToy KB into context
-  # 4M mode: set VLLM_ALLOW_LONG_MAX_MODEL_LEN=1 and --max-model-len 1048576
+  # ~37 GB na DGX Spark UMA — příliš velké pro koexistenci s nano + coder (49B FP8)
+  # Aktivovat standalone: docker compose --profile rag up -d
   swarm-rag:
     image: vllm/vllm-openai:${SWARM_VLLM_VERSION}
     container_name: swarm-rag
     restart: unless-stopped
+    profiles:
+      - rag
     command: >
-      vllm serve ${HF_MODEL_SWARM_RAG}
+      ${HF_MODEL_SWARM_RAG}
       --served-model-name swarm-rag
       --gpu-memory-utilization 0.16
       --max-model-len 131072
@@ -165,7 +164,7 @@ services:
       - "127.0.0.1:8013:8000"
     shm_size: 8gb
     volumes:
-      - ${CACHE_SWARM_RAG}:/root/.cache/huggingface
+      - ${CACHE_SWARM_RAG}:/root/.cache/huggingface/hub
     networks:
       - internal
     deploy:
@@ -186,17 +185,25 @@ services:
   # intfloat/e5-mistral-7b-instruct — ~5 GB, purpose-built embedding server
   # Lighter than vLLM embedding mode (~9 GB savings vs vLLM)
   swarm-embed:
-    image: ghcr.io/huggingface/text-embeddings-inference:latest
+    image: vllm/vllm-openai:${SWARM_VLLM_VERSION}
     container_name: swarm-embed
     restart: unless-stopped
-    command: --model-id ${HF_MODEL_SWARM_EMBED} --port 80
+    profiles:
+      - embed
+    command: >
+      ${HF_MODEL_SWARM_EMBED}
+      --served-model-name swarm-embed
+      --task embed
+      --gpu-memory-utilization 0.05
+      --trust-remote-code
     environment:
       - HF_TOKEN=${HF_TOKEN}
       - HF_HUB_OFFLINE=1
     ports:
-      - "127.0.0.1:8005:80"
+      - "127.0.0.1:8005:8000"
+    shm_size: 4gb
     volumes:
-      - ${CACHE_SWARM_EMBED}:/data
+      - ${CACHE_SWARM_EMBED}:/root/.cache/huggingface/hub
     networks:
       - internal
     deploy:
@@ -207,33 +214,14 @@ services:
               count: 1
               capabilities: [gpu]
     healthcheck:
-      test: ["CMD", "curl", "-sf", "http://localhost:80/health"]
-      interval: 10s
-      timeout: 5s
+      test: ["CMD", "curl", "-sf", "http://localhost:8000/v1/models"]
+      interval: 30s
+      timeout: 10s
       retries: 5
-      start_period: 120s
+      start_period: 180s
 
-  # ── Vector store: ChromaDB ─────────────────────────────────────────────────
-  chromadb:
-    image: ghcr.io/chroma-core/chroma:latest
-    container_name: swarm-chromadb
-    restart: unless-stopped
-    environment:
-      - IS_PERSISTENT=TRUE
-      - PERSIST_DIRECTORY=/chroma/chroma
-      - ANONYMIZED_TELEMETRY=FALSE
-    ports:
-      - "127.0.0.1:8006:8000"
-    volumes:
-      - ${CHROMADB_DATA}:/chroma/chroma
-    networks:
-      - internal
-    healthcheck:
-      test: ["CMD", "curl", "-sf", "http://localhost:8000/api/v1/heartbeat"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 15s
+  # ── Vector store: ChromaDB — běží na NASu (deploy/docker-compose.swarm.nas.yaml)
+  # Adresa: ${CHROMADB_URL}  →  http://192.168.88.88:8006
 
   # ── LiteLLM gateway for swarm models ──────────────────────────────────────
   swarm-litellm:
@@ -257,8 +245,6 @@ services:
       swarm-nano:
         condition: service_healthy
       swarm-coder:
-        condition: service_healthy
-      swarm-rag:
         condition: service_healthy
 
 networks:
