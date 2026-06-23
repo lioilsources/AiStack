@@ -1,0 +1,38 @@
+# ChromaDB pro SwarmBattle — běží na NASu, dostupný ze SPARKu přes LAN
+#
+# Na NASu:
+#   docker compose -f docker-compose.swarm.nas.yaml up -d
+#
+# Env vars (vytvoř .env vedle tohoto souboru):
+#   CHROMADB_DATA=/data/chromadb   # cesta na NASu kde se ukládají vektory
+#   CHROMA_TOKEN=<tajný token>     # pokud chceš auth (volitelné)
+#
+# Ze SPARKu se připojuj na:
+#   http://192.168.88.88:8006
+# Na SPARKu v .env:
+#   CHROMADB_URL=http://192.168.88.88:8006
+
+services:
+  chromadb:
+    image: chromadb/chroma:latest
+    container_name: swarm-chromadb
+    restart: unless-stopped
+    environment:
+      - IS_PERSISTENT=TRUE
+      - PERSIST_DIRECTORY=/chroma/chroma
+      - ANONYMIZED_TELEMETRY=FALSE
+      # Volitelná auth — odkomentuj a nastav token pokud NAS není za firewallem
+      # - CHROMA_SERVER_AUTHN_CREDENTIALS=${CHROMA_TOKEN}
+      # - CHROMA_SERVER_AUTHN_PROVIDER=chromadb.auth.token_authn.TokenAuthenticationServerProvider
+    ports:
+      # Narozdíl od SPARKu (127.0.0.1) tady bindujeme na 0.0.0.0
+      # aby byl dostupný z LAN (ze SPARKu i jiných strojů)
+      - "0.0.0.0:8006:8000"
+    volumes:
+      - ${CHROMADB_DATA:-/data/chromadb}:/chroma/chroma
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8000/api/v2/heartbeat"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 20s
