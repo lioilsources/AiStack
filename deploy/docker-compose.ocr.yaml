@@ -1,21 +1,16 @@
 services:
   ocr-api:
-    image: ghcr.io/ol1n/ocr-api:latest
-    ports:
-      - "127.0.0.1:8003:8003"
+    image: nvcr.io/nim/nvidia/nemotron-ocr-v2:1.4
+    container_name: ocr-api
+    restart: unless-stopped
     environment:
-      REDIS_URL: redis://ocr-redis:6379
-      # model dir name matches download_ocr_models.sh naming: org__repo
-      OCR_MODEL: ${OCR_MODEL:-dh-unibe__trocr-kurrent}
-      OCR_MODEL_DIR: /models
-      HF_TOKEN: ${HF_TOKEN}
+      - NGC_API_KEY=${NGC_API_KEY}
+    ports:
+      - "127.0.0.1:8003:8000"
     volumes:
-      - ${CACHE_OCR}:/models
+      - ${CACHE_OCR}:/opt/nim/.cache
     networks:
       - internal
-    depends_on:
-      ocr-redis:
-        condition: service_healthy
     deploy:
       resources:
         reservations:
@@ -24,20 +19,11 @@ services:
               count: 1
               capabilities: [gpu]
     healthcheck:
-      test: ["CMD", "curl", "-sf", "http://localhost:8003/health"]
+      test: ["CMD", "curl", "-sf", "http://localhost:8000/v1/health/ready"]
       interval: 30s
       timeout: 5s
-      retries: 3
-
-  ocr-redis:
-    image: redis:7-alpine
-    networks:
-      - internal
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 10s
-      timeout: 3s
       retries: 5
+      start_period: 120s
 
 networks:
   internal:

@@ -7,25 +7,20 @@
 services:
 
   lab:
-    # gpt-oss-120b — nejsilnější model, spouštět jen na vyžádání (make up-lab / profile: lab).
+    # Llama-3.3-Nemotron-Super-49B-v1.5 NIM — nejsilnější model, spouštět jen na vyžádání.
     # llm-lab alias v LiteLLM míří primárně sem, fallbackuje na dev (Gemma) a další stacky.
     profiles: ["lab"]
-    image: nvcr.io/nvidia/vllm:${VLLM_VERSION}
+    image: nvcr.io/nim/nvidia/llama-3.3-nemotron-super-49b-v1.5:latest
     container_name: lab
     restart: unless-stopped
-    command: >
-      vllm serve ${HF_MODEL_LAB}
-      --served-model-name lab
-      --gpu-memory-utilization 0.7
-      --max-model-len 131072
     environment:
-      - HF_TOKEN=${HF_TOKEN}
-      - HF_HUB_OFFLINE=1
+      - NGC_API_KEY=${NGC_API_KEY}
+      - NIM_SERVED_MODEL_NAME=lab
     ports:
       - "127.0.0.1:8000:8000"
     shm_size: 48gb
     volumes:
-      - ${CACHE_LAB}:/root/.cache/huggingface
+      - ${CACHE_LAB}:/opt/nim/.cache
     networks:
       - internal
     deploy:
@@ -43,36 +38,18 @@ services:
       start_period: 600s
 
   dev:
-    # Gemma-4-31B-IT-NVFP4 (~31 GiB NVFP4) — obecný dev LLM; llm-lab sem fallbackuje když lab neběží.
-    # Překlady: docker-compose.translate.yaml (vlastní HF_MODEL_TRANSLATE, oddělen od dev).
-    # Paměť: model ~31 + KV 8 + overhead ≈ 40 GiB. startup guard: 0.35*128 ≈ 45 GiB required.
-    # Po tune-image CUDA driver může držet reserved pages — pokud start selže, snižit na 0.28.
-    # Thinking vypnuto by default v litellm (enable_thinking: false); klient může zapnout.
-    # tool-call-parser: Gemma-4 používá pythonic formát; ověřit pokud tool calling nefunguje.
-    # nvidia/vllm 26.03 (vLLM 0.17.1) nepodporuje Gemma-4 (gemma4 arch); vyžaduje vLLM 0.20+.
-    # Přepnout na nvidia image až bude 26.05+ nebo nová release s Gemma-4 support.
-    image: vllm/vllm-openai:v0.20.0
+    # Llama-3.1-8B-Instruct NIM — obecný dev LLM; llm-lab sem fallbackuje když lab neběží.
+    image: nvcr.io/nim/meta/llama-3.1-8b-instruct:2.0.6
     container_name: dev
     restart: unless-stopped
-    command: >
-      ${HF_MODEL_DEV}
-      --served-model-name dev
-      --kv-cache-memory-bytes 8589934592
-      --gpu-memory-utilization 0.35
-      --max-model-len 32768
-      --max-num-batched-tokens 4096
-      --max-num-seqs 8
-      --enable-auto-tool-choice
-      --tool-call-parser pythonic
-      --trust-remote-code
     environment:
-      - HF_TOKEN=${HF_TOKEN}
-      - HF_HUB_OFFLINE=1
+      - NGC_API_KEY=${NGC_API_KEY}
+      - NIM_SERVED_MODEL_NAME=dev
     ports:
       - "127.0.0.1:8001:8000"
     shm_size: 16gb
     volumes:
-      - ${CACHE_DEV}:/root/.cache/huggingface
+      - ${CACHE_DEV}:/opt/nim/.cache
     networks:
       - internal
     deploy:
@@ -104,9 +81,6 @@ services:
       timeout: 5s
       retries: 5
       start_period: 30s
-    depends_on:
-      dev:
-        condition: service_healthy
 
 networks:
   internal:

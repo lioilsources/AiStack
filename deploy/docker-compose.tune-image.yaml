@@ -12,10 +12,10 @@
 # Paměťový rozpočet train fáze (DGX Spark 128 GB UMA, dev stopped):
 #   ComfyUI host (FLUX fp8 ~17 + Pony ~7 + CLIP/VAE ~6)  ≈ 30 GB
 #   tune-builder  Nemotron-Nano NVFP4 + KV               ≈ 18–22 GB
-#   tune-validator Qwen2.5-VL-7B bf16 + KV + vision      ≈ 18–20 GB
-#   celkem                                               ≈ 66–72 GB
+#   tune-validator Nemotron-Nano-VL-8B NIM + KV          ≈ 12–15 GB
+#   celkem                                               ≈ 60–67 GB
 #
-# Env vars: HF_TOKEN, HF_MODEL_TUNE_BUILDER, HF_MODEL_TUNE_VALIDATOR,
+# Env vars: HF_TOKEN, NGC_API_KEY, HF_MODEL_TUNE_BUILDER,
 #           CACHE_TUNE_BUILDER, CACHE_TUNE_VALIDATOR
 
 services:
@@ -69,29 +69,20 @@ services:
       start_period: 300s
 
   # ── Validátor: VLM kontrola vygenerovaných karet ────────────────────────────
-  # Qwen2.5-VL-7B-Instruct (bf16, ~16 GB) — stačí na "je tam jedno jasné zvíře,
-  # je to on-style, jsou kritické vady?". Upgrade na 32B-AWQ jen pokud selhává.
+  # Llama-3.1-Nemotron-Nano-VL-8B-v1 NIM (~12–15 GB) — self-contained NIM,
+  # nepřijímá vLLM args; NGC_API_KEY nutný pro první pull vah.
   tune-validator:
-    image: nvcr.io/nvidia/vllm:${VLLM_VERSION}
+    image: nvcr.io/nim/nvidia/llama-3.1-nemotron-nano-vl-8b-v1:1
     container_name: tune-validator
     restart: unless-stopped
-    command: >
-      vllm serve ${HF_MODEL_TUNE_VALIDATOR}
-      --served-model-name tune-validator
-      --gpu-memory-utilization 0.25
-      --max-model-len 16384
-      --max-num-seqs 4
-      --limit-mm-per-prompt '{"image":4}'
-      --trust-remote-code
     environment:
-      - HF_TOKEN=${HF_TOKEN}
-      - HF_HUB_OFFLINE=1
+      - NGC_API_KEY=${NGC_API_KEY}
+      - NIM_SERVED_MODEL_NAME=tune-validator
     ports:
       - "127.0.0.1:8021:8000"
     shm_size: 8gb
     volumes:
-      # cache má podadresář hub/ (stažen přes --cache-dir → hub layout uvnitř)
-      - ${CACHE_TUNE_VALIDATOR}:/root/.cache/huggingface
+      - ${CACHE_TUNE_VALIDATOR}:/opt/nim/.cache
     networks:
       - internal
     deploy:

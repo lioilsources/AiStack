@@ -1,43 +1,27 @@
-# Translate module: Qwen3-32B-AWQ nakonfigurovaný pro hromadné překlady.
+# Translate module: Qwen3-32B DGX Spark NIM pro hromadné překlady.
 #
-# Standalone: docker compose -f deploy/docker-compose.translate.yaml up -d
+# Standalone: docker compose --env-file .env -f deploy/docker-compose.translate.yaml up -d
 #           → nebo: make up-translate
 #
-# Paměť: sdílí GPU pool s 'dev' (readonly mount stejného cache).
-# Bez rebootu (CUDA driver drží ~90 GiB reserved pages) není dost místa
-# pro obě instance najednou — v takovém případě nejdřív: make down-llm.
-# Po rebootu (free > 100 GiB) obě instance koexistují bez problémů.
-#
-# Tuning pro překlady:
-#   --max-num-seqs 32      překlady jsou krátké → lze nasytit více slotů
-#   --max-model-len 4096   překlady nepotřebují 32K kontext
-#   --kv-cache-memory-bytes 4 GiB  stačí: 32 seqs × ~125 MB při 4K ctx
-# Tyto hodnoty sem patří, nikoli do docker-compose.llm.yaml (dev = obecný LLM).
+# Paměť: NIM dgx-spark varianta použije NVFP4 automaticky (~15–18 GB).
+# Sdílí GPU pool s 'dev' — bez rebootu může být těsno; nejdřív: make down-llm.
 
 services:
 
   translate:
-    image: nvcr.io/nvidia/vllm:${VLLM_VERSION}
+    image: nvcr.io/nim/qwen/qwen3-32b-dgx-spark:1.1.0-variant
     container_name: translate
     restart: unless-stopped
-    command: >
-      vllm serve ${HF_MODEL_TRANSLATE}
-      --served-model-name translate
-      --kv-cache-memory-bytes 4294967296
-      --gpu-memory-utilization 0.22
-      --max-model-len 4096
-      --max-num-seqs 32
-      --enable-auto-tool-choice
-      --tool-call-parser hermes
-      --trust-remote-code
     environment:
-      - HF_TOKEN=${HF_TOKEN}
-      - HF_HUB_OFFLINE=1
+      - NGC_API_KEY=${NGC_API_KEY}
+      - NIM_SERVED_MODEL_NAME=translate
+      - NIM_MAX_MODEL_LEN=4096
+      - NIM_GPU_MEMORY_UTILIZATION=0.22
     ports:
       - "127.0.0.1:8004:8000"
     shm_size: 16gb
     volumes:
-      - ${CACHE_TRANSLATE}:/root/.cache/huggingface/hub
+      - ${CACHE_TRANSLATE}:/opt/nim/.cache
     networks:
       - internal
     deploy:
