@@ -12,6 +12,7 @@ COMPOSE_TRANSLATE := docker compose -f deploy/docker-compose.translate.yaml --en
         up-translate down-translate \
         up-swarm down-swarm up-swarm-director down-swarm-director \
         up-tune-image down-tune-image \
+        up-dev down-dev logs-dev \
         download-flux download-flux-lora download-qwen-vl \
         download-nemotron download-nemotron-coder download-ocr-models \
         gateway-build gateway-run
@@ -31,6 +32,16 @@ logs:
 
 ps:
 	$(COMPOSE) ps
+
+## dev NIM container
+up-dev:
+	$(COMPOSE_LLM) up -d --no-deps dev
+
+down-dev:
+	$(COMPOSE_LLM) stop dev && $(COMPOSE_LLM) rm -f dev
+
+logs-dev:
+	docker exec dev tail -f /opt/nim/nginx/error.log
 
 ## Individual modules
 up-llm:
