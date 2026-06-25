@@ -1,0 +1,103 @@
+# Image NIM stack — přepínatelné FLUX modely (jen jeden najednou)
+#
+# Přepínání: make up-image-schnell | up-image-kontext | up-image-dev
+# Všechny tři sdílejí port 8030; Makefile target stopne ostatní před startem nového.
+# Nezávislé na controller-manageru — LLM stack běží souběžně.
+#
+# Env vars: NGC_API_KEY, CACHE_IMAGE_SCHNELL, CACHE_IMAGE_KONTEXT, CACHE_IMAGE_FLUX_DEV
+# API:      POST http://localhost:8030/v1/infer
+# Health:   GET  http://localhost:8030/v1/health/ready
+
+services:
+
+  # ── FLUX.1-schnell — rychlý, 4 kroky, text-to-image ────────────────────────
+  flux-schnell:
+    image: nvcr.io/nim/black-forest-labs/flux.1-schnell:latest
+    container_name: flux-schnell
+    restart: unless-stopped
+    environment:
+      - NGC_API_KEY=${NGC_API_KEY}
+      - NIM_SERVED_MODEL_NAME=flux-schnell
+    ports:
+      - "127.0.0.1:8030:8000"
+    shm_size: 16gb
+    volumes:
+      - ${CACHE_IMAGE_SCHNELL}:/opt/nim/.cache
+    networks:
+      - internal
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8000/v1/health/ready"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 600s
+
+  # ── FLUX.1-kontext-dev — inpainting / image editing, 28 kroků ──────────────
+  flux-kontext:
+    image: nvcr.io/nim/black-forest-labs/flux.1-kontext-dev:1.1
+    container_name: flux-kontext
+    restart: unless-stopped
+    environment:
+      - NGC_API_KEY=${NGC_API_KEY}
+      - NIM_SERVED_MODEL_NAME=flux-kontext
+    ports:
+      - "127.0.0.1:8030:8000"
+    shm_size: 32gb
+    volumes:
+      - ${CACHE_IMAGE_KONTEXT}:/opt/nim/.cache
+    networks:
+      - internal
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8000/v1/health/ready"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 600s
+
+  # ── FLUX.1-dev — kvalitní text-to-image, 28 kroků ──────────────────────────
+  flux-dev:
+    image: nvcr.io/nim/black-forest-labs/flux.1-dev:1.2.3
+    container_name: flux-dev
+    restart: unless-stopped
+    environment:
+      - NGC_API_KEY=${NGC_API_KEY}
+      - NIM_SERVED_MODEL_NAME=flux-dev
+    ports:
+      - "127.0.0.1:8030:8000"
+    shm_size: 32gb
+    volumes:
+      - ${CACHE_IMAGE_FLUX_DEV}:/opt/nim/.cache
+    networks:
+      - internal
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8000/v1/health/ready"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 600s
+
+networks:
+  internal:
+    external: true
+    name: ai
