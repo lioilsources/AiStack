@@ -1,6 +1,7 @@
 COMPOSE := docker compose -f deploy/docker-compose.yml --env-file .env
 COMPOSE_LLM   := docker compose -f deploy/docker-compose.llm.yaml --env-file .env
-COMPOSE_IMAGE := docker compose -f deploy/docker-compose.image.yaml --env-file .env
+COMPOSE_IMAGE     := docker compose -f deploy/docker-compose.image.yaml --env-file .env
+COMPOSE_IMAGE_NIM := docker compose -f deploy/docker-compose.image-nim.yaml --env-file .env
 COMPOSE_OCR   := docker compose -f deploy/docker-compose.ocr.yaml --env-file .env
 COMPOSE_SWARM := docker compose -f deploy/docker-compose.swarm.yaml --env-file .env
 COMPOSE_TUNE      := docker compose -f deploy/docker-compose.tune-image.yaml --env-file .env
@@ -13,6 +14,7 @@ COMPOSE_TRANSLATE := docker compose -f deploy/docker-compose.translate.yaml --en
         up-swarm down-swarm up-swarm-director down-swarm-director \
         up-tune-image down-tune-image \
         up-dev down-dev logs-dev \
+        up-image-schnell up-image-kontext up-image-dev down-image-nim \
         download-flux download-flux-lora download-qwen-vl \
         download-nemotron download-nemotron-coder download-ocr-models \
         gateway-build gateway-run
@@ -82,6 +84,26 @@ up-swarm-director:
 down-swarm-director:
 	$(COMPOSE_SWARM) --profile director stop swarm-director
 	$(COMPOSE_SWARM) --profile director rm -f swarm-director
+
+## Image NIM stack — přepínatelné FLUX modely (port 8030)
+# Každý target stopne ostatní dva před startem nového.
+up-image-schnell:
+	$(COMPOSE_IMAGE_NIM) stop flux-kontext flux-dev 2>/dev/null || true
+	$(COMPOSE_IMAGE_NIM) rm -f flux-kontext flux-dev 2>/dev/null || true
+	$(COMPOSE_IMAGE_NIM) up -d flux-schnell
+
+up-image-kontext:
+	$(COMPOSE_IMAGE_NIM) stop flux-schnell flux-dev 2>/dev/null || true
+	$(COMPOSE_IMAGE_NIM) rm -f flux-schnell flux-dev 2>/dev/null || true
+	$(COMPOSE_IMAGE_NIM) up -d flux-kontext
+
+up-image-dev:
+	$(COMPOSE_IMAGE_NIM) stop flux-schnell flux-kontext 2>/dev/null || true
+	$(COMPOSE_IMAGE_NIM) rm -f flux-schnell flux-kontext 2>/dev/null || true
+	$(COMPOSE_IMAGE_NIM) up -d flux-dev
+
+down-image-nim:
+	$(COMPOSE_IMAGE_NIM) down
 
 ## Card Forge image-tune module
 # fáze train: stopne 'dev' (uvolní ~28 GB) a spustí builder+validator
