@@ -63,6 +63,28 @@ model_list:
       api_key: dummy
       timeout: 300
 
+  # ── Image NIM — FLUX modely (přepínatelné, port 8030) ──────────
+  - model_name: flux-schnell
+    litellm_params:
+      model: openai/flux-schnell
+      api_base: http://flux-schnell:8000/v1
+      api_key: dummy
+      timeout: 120
+
+  - model_name: flux-kontext
+    litellm_params:
+      model: openai/flux-kontext
+      api_base: http://flux-kontext:8000/v1
+      api_key: dummy
+      timeout: 120
+
+  - model_name: flux-dev
+    litellm_params:
+      model: openai/flux-dev
+      api_base: http://flux-dev:8000/v1
+      api_key: dummy
+      timeout: 120
+
   - model_name: swarm-director
     litellm_params:
       model: openai/swarm-director
