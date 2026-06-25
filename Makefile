@@ -105,6 +105,9 @@ up-image-dev:
 down-image-nim:
 	$(COMPOSE_IMAGE_NIM) down
 
+logs-image:
+	$(COMPOSE_IMAGE_NIM) logs -f --tail=50
+
 ## Card Forge image-tune module
 # fáze train: stopne 'dev' (uvolní ~28 GB) a spustí builder+validator
 up-tune-image:

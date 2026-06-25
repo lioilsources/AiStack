@@ -17,6 +17,7 @@ services:
     restart: unless-stopped
     environment:
       - NGC_API_KEY=${NGC_API_KEY}
+      - HF_TOKEN=${HF_TOKEN}
       - NIM_SERVED_MODEL_NAME=flux-schnell
     ports:
       - "127.0.0.1:8030:8000"
@@ -46,6 +47,7 @@ services:
     restart: unless-stopped
     environment:
       - NGC_API_KEY=${NGC_API_KEY}
+      - HF_TOKEN=${HF_TOKEN}
       - NIM_SERVED_MODEL_NAME=flux-kontext
     ports:
       - "127.0.0.1:8030:8000"
@@ -75,6 +77,7 @@ services:
     restart: unless-stopped
     environment:
       - NGC_API_KEY=${NGC_API_KEY}
+      - HF_TOKEN=${HF_TOKEN}
       - NIM_SERVED_MODEL_NAME=flux-dev
     ports:
       - "127.0.0.1:8030:8000"
