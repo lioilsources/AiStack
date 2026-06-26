@@ -17,6 +17,7 @@ COMPOSE_TRANSLATE := docker compose -f deploy/docker-compose.translate.yaml --en
         up-image-schnell up-image-kontext up-image-dev down-image-nim \
         download-flux download-flux-lora download-qwen-vl \
         download-nemotron download-nemotron-coder download-ocr-models \
+        download-scout \
         gateway-build gateway-run
 
 ## Full stack
@@ -137,6 +138,9 @@ download-qwen-vl:
 
 download-ocr-models:
 	env $$(grep -v '^#' .env | xargs) bash scripts/download_ocr_models.sh
+
+download-scout:
+	env $$(grep -v '^#' .env | xargs) bash scripts/download_scout.sh
 
 ## Go gateway — local dev build and run
 gateway-build:

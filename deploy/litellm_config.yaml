@@ -94,3 +94,21 @@ model_list:
       extra_body:
         chat_template_kwargs:
           enable_thinking: false
+
+general_settings:
+  # ── NIM pass-through — nativní /v1/infer endpoint ──────────────────────────
+  # Volání: POST http://localhost:4000/nim/flux-schnell/v1/infer
+  #         POST http://localhost:4000/nim/flux-kontext/v1/infer
+  #         POST http://localhost:4000/nim/flux-dev/v1/infer
+  pass_through_endpoints:
+    - path: "/nim/flux-schnell/v1/infer"
+      target: "http://flux-schnell:8000/v1/infer"
+      headers: {}
+
+    - path: "/nim/flux-kontext/v1/infer"
+      target: "http://flux-kontext:8000/v1/infer"
+      headers: {}
+
+    - path: "/nim/flux-dev/v1/infer"
+      target: "http://flux-dev:8000/v1/infer"
+      headers: {}
