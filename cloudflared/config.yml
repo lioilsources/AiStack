@@ -5,6 +5,14 @@ tunnel: 46b3669e-0b5d-4a57-8cc2-6c8625fde590
 credentials-file: /etc/cloudflared/46b3669e-0b5d-4a57-8cc2-6c8625fde590.json
 
 ingress:
+  # nim-kontext-proxy — must come before the general llm.ol1n.com rule
+  - hostname: llm.ol1n.com
+    path: /nim/flux-kontext/.*
+    service: http://nim-kontext-proxy:8004
+    originRequest:
+      connectTimeout: 30s
+      keepAliveTimeout: 300s
+
   # llm.ol1n.com → AiStack Go gateway (LLM + OCR routing)
   - hostname: llm.ol1n.com
     service: http://gateway:8080
@@ -12,7 +20,7 @@ ingress:
       connectTimeout: 30s
       tcpKeepAlive: 30s
       noHappyEyeballs: false
-      keepAliveTimeout: 90s
+      keepAliveTimeout: 300s
       keepAliveConnections: 10
       httpHostHeader: llm.ol1n.com
       originServerName: ""
