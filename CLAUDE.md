@@ -72,6 +72,7 @@ Podrobnosti → `SKILL.md`.
 | 8001 | dev | NIM |
 | 8003 | ocr-api | NIM |
 | 8004 | translate | NIM |
+| 8015 | nim-kontext-proxy | Python async proxy (container port 8004) |
 | 8005 | swarm-embed | vLLM, profile: embed |
 | 8010 | swarm-nano | vLLM |
 | 8011 | swarm-coder | vLLM (NGC image) |

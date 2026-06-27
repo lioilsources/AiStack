@@ -147,7 +147,6 @@ services:
       --served-model-name swarm-director
       --gpu-memory-utilization 0.60
       --max-model-len 262144
-      --kv-cache-dtype fp8
       --reasoning-parser nemotron_v3
       --enable-auto-tool-choice
       --tool-call-parser qwen3_coder
