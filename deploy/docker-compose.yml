@@ -49,7 +49,7 @@ services:
       - "0.0.0.0:8080:8080"
     environment:
       - LITELLM_URL=http://litellm:4000
-      - OCR_API_URL=http://ocr-api:8003
+      - OCR_API_URL=http://ocr-api:8000
       - CONTROLLER_URL=http://controller:8090
     networks:
       - internal
@@ -59,6 +59,32 @@ services:
       timeout: 3s
       retries: 5
       start_period: 15s
+
+  # ─────────────────────────────────────────────
+  # nim-kontext-proxy — async wrapper pro FLUX.1-Kontext NIM
+  # Cloudflare routuje llm.ol1n.com/nim/flux-kontext/* sem (port 8004).
+  # Proxy přijme request, vrátí job_id (202), a zpracuje asynchronně —
+  # obchází 100s timeout Cloudflare edge pro dlouhé NIM inference.
+  # ─────────────────────────────────────────────
+  nim-kontext-proxy:
+    build:
+      context: ../services/nim-kontext-proxy
+    image: aistack/nim-kontext-proxy:latest
+    container_name: nim-kontext-proxy
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8015:8004"
+    environment:
+      - NIM_KONTEXT_URL=http://flux-kontext:8000
+      - JOB_TTL=3600
+    networks:
+      - internal
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8004/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
 
   # ─────────────────────────────────────────────
   # Cloudflare Tunnel — exposes gateway at llm.ol1n.com

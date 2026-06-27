@@ -59,7 +59,7 @@ model_list:
   - model_name: swarm-coder
     litellm_params:
       model: openai/swarm-coder
-      api_base: http://swarm-coder-nim:8000/v1
+      api_base: http://swarm-coder:8000/v1
       api_key: dummy
       timeout: 300
 
