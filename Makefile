@@ -14,7 +14,7 @@ COMPOSE_TRANSLATE := docker compose -f deploy/docker-compose.translate.yaml --en
         up-swarm down-swarm up-swarm-director down-swarm-director \
         up-tune-image down-tune-image \
         up-dev down-dev logs-dev \
-        up-image-schnell up-image-kontext up-image-dev down-image-nim \
+        up-image-schnell up-image-kontext up-image-dev down-image-nim logs-kontext \
         download-flux download-flux-lora download-qwen-vl \
         download-nemotron download-nemotron-coder download-ocr-models \
         download-scout \
@@ -108,6 +108,22 @@ down-image-nim:
 
 logs-image:
 	$(COMPOSE_IMAGE_NIM) logs -f --tail=50
+
+## Monitoring — flux-kontext flow (CF tunnel → nim-kontext-proxy → flux-kontext NIM)
+# Prefix: [cf] cloudflared, [proxy] nim-kontext-proxy, [nim] flux-kontext NIM
+# Filtruje health checky a JWT hlavičky z CF debug logu.
+logs-kontext:
+	@trap 'kill 0' EXIT; \
+	docker logs -f --timestamps --tail=10 nim-kontext-proxy 2>&1 \
+		| grep --line-buffered -v "GET /health" \
+		| sed 's/^/\x1b[36m[proxy]\x1b[0m /' & \
+	docker logs -f --timestamps --tail=10 flux-kontext 2>&1 \
+		| grep --line-buffered -v "readiness check" \
+		| sed 's/^/\x1b[33m[nim]  \x1b[0m /' & \
+	docker logs -f --timestamps --tail=5 ai-cloudflared-1 2>&1 \
+		| grep --line-buffered "flux-kontext\|infer\|/jobs\|[45][0-9][0-9] " \
+		| sed 's/ headers={[^}]*}//g; s/^/\x1b[35m[cf]   \x1b[0m /' & \
+	wait
 
 ## Card Forge image-tune module
 # fáze train: stopne 'dev' (uvolní ~28 GB) a spustí builder+validator
