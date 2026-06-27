@@ -14,9 +14,14 @@ from fastapi import FastAPI, HTTPException
 from fastapi.responses import Response
 from pydantic import BaseModel
 
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s [%(name)s] %(message)s",
+    datefmt="%Y-%m-%dT%H:%M:%S",
+)
 logger = logging.getLogger("nim-kontext-proxy")
 
-NIM_KONTEXT_URL = os.environ.get("NIM_KONTEXT_URL", "http://ai-flux-kontext-nim:8000")
+NIM_KONTEXT_URL = os.environ.get("NIM_KONTEXT_URL", "http://flux-kontext:8000")
 JOB_TTL = float(os.environ.get("JOB_TTL", "3600"))
 
 _jobs: dict[str, dict] = {}
@@ -83,20 +88,26 @@ def _sweep() -> None:
 
 
 def _call_nim(body: dict) -> bytes:
+    t0 = _now()
+    logger.info("nim.request nim=%s steps=%s aspect=%s has_image=%s",
+                NIM_KONTEXT_URL, body.get("steps"), body.get("aspect_ratio"),
+                bool(body.get("image")))
     resp = _requests.post(f"{NIM_KONTEXT_URL}/v1/infer", json=body, timeout=300)
     resp.raise_for_status()
     data = resp.json()
     artifacts = data.get("artifacts", [])
     if not artifacts:
-        raise ValueError(f"NIM Kontext returned no artifacts: {data}")
+        raise ValueError(f"NIM returned no artifacts: {data}")
     b64 = artifacts[0].get("base64", "")
     if not b64:
-        raise ValueError(f"NIM Kontext artifact missing base64: {artifacts[0]}")
+        raise ValueError(f"NIM artifact missing base64: {artifacts[0]}")
     from PIL import Image as _Pil
     raw = base64.b64decode(b64)
     buf = io.BytesIO()
     _Pil.open(io.BytesIO(raw)).convert("RGB").save(buf, format="PNG")
-    return buf.getvalue()
+    png = buf.getvalue()
+    logger.info("nim.done nim_ms=%d png_kb=%d", int((_now() - t0) * 1000), len(png) // 1024)
+    return png
 
 
 async def _worker() -> None:
@@ -107,18 +118,23 @@ async def _worker() -> None:
         if job is None:
             _queue.task_done()
             continue
+        queue_wait_ms = int((_now() - job["created"]) * 1000)
         job["status"] = "running"
         job["updated"] = _now()
         run = job.pop("_run", None)
+        logger.info("job.started id=%s queue_wait_ms=%d queue_depth=%d",
+                    job_id[:8], queue_wait_ms, _queue.qsize())
+        t0 = _now()
         try:
             job["result"] = await loop.run_in_executor(_executor, run)
             job["status"] = "done"
+            logger.info("job.done id=%s total_ms=%d", job_id[:8], int((_now() - t0) * 1000))
         except asyncio.CancelledError:
             raise
         except Exception as e:
             job["status"] = "error"
             job["error"] = f"{type(e).__name__}: {e}"
-            logger.exception("job %s failed", job_id)
+            logger.error("job.error id=%s error=%r", job_id[:8], job["error"])
         finally:
             job["updated"] = _now()
             _queue.task_done()
@@ -130,6 +146,7 @@ async def lifespan(app: FastAPI):
     global _queue
     _queue = asyncio.Queue()
     worker = asyncio.create_task(_worker())
+    logger.info("startup nim_kontext_url=%s job_ttl=%ss", NIM_KONTEXT_URL, int(JOB_TTL))
     yield
     worker.cancel()
     try:
@@ -165,6 +182,10 @@ async def infer(req: InferRequest):
     job = _new_job()
     job["_run"] = lambda: _call_nim(body)
     await _queue.put(job["id"])
+    pos = _queue_position(job["id"])
+    logger.info("job.queued id=%s prompt=%r has_image=%s ratio=%s steps=%s queue_pos=%d",
+                job["id"][:8], req.prompt[:60], bool(req.image),
+                req.aspect_ratio, req.steps, pos)
     return _accepted(job)
 
 
@@ -183,6 +204,7 @@ async def job_result(job_id: str):
         raise HTTPException(404, "job not found (unknown id or expired)")
     if job["status"] != "done":
         raise HTTPException(409, f"result not ready (status: {job['status']})")
+    logger.info("job.result id=%s size_kb=%d", job_id[:8], len(job["result"]) // 1024)
     return Response(content=job["result"], media_type="image/png")
 
 
