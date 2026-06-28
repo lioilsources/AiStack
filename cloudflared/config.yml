@@ -39,6 +39,8 @@ ingress:
     service: http://host.docker.internal:8188
     originRequest:
       connectTimeout: 30s
+      tcpKeepAlive: 30s
+      keepAliveTimeout: 300s
       access:
         required: true
         teamName: ol1n
