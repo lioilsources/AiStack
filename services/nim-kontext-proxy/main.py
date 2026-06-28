@@ -208,6 +208,10 @@ async def infer(req: InferRequest):
 async def job_status(job_id: str):
     job = _jobs.get(job_id)
     if job is None:
+        out_path = OUTPUT_DIR / f"{job_id}.png"
+        if out_path.exists():
+            return {"id": job_id, "status": "done", "step": 0, "total": 0,
+                    "result_url": f"/nim/flux-kontext/jobs/{job_id}/result"}
         raise HTTPException(404, "job not found (unknown id or expired)")
     return _public(job)
 
@@ -216,6 +220,11 @@ async def job_status(job_id: str):
 async def job_result(job_id: str):
     job = _jobs.get(job_id)
     if job is None:
+        out_path = OUTPUT_DIR / f"{job_id}.png"
+        if out_path.exists():
+            png = out_path.read_bytes()
+            logger.info("job.result id=%s size_kb=%d (disk)", job_id[:8], len(png) // 1024)
+            return Response(content=png, media_type="image/png")
         raise HTTPException(404, "job not found (unknown id or expired)")
     if job["status"] != "done":
         raise HTTPException(409, f"result not ready (status: {job['status']})")
