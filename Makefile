@@ -109,14 +109,14 @@ down-image-nim:
 logs-image:
 	$(COMPOSE_IMAGE_NIM) logs -f --tail=50
 
-## Monitoring — flux-kontext flow (CF tunnel → nim-kontext-proxy → flux-kontext NIM)
-# Prefix: [cf] cloudflared, [proxy] nim-kontext-proxy, [nim] flux-kontext NIM
+## Monitoring — flux-kontext flow (CF tunnel → gen-queue → flux-kontext NIM)
+# Prefix: [cf] cloudflared, [queue] gen-queue, [nim] flux-kontext NIM
 # Filtruje health checky a JWT hlavičky z CF debug logu.
 logs-kontext:
 	@trap 'kill 0' EXIT; \
-	docker logs -f --timestamps --tail=10 nim-kontext-proxy 2>&1 \
-		| grep --line-buffered -v "GET /health" \
-		| sed 's/^/\x1b[36m[proxy]\x1b[0m /' & \
+	docker logs -f --timestamps --tail=10 ai-gen-queue 2>&1 \
+		| grep --line-buffered -v '"msg":"health"' \
+		| sed 's/^/\x1b[36m[queue]\x1b[0m /' & \
 	docker logs -f --timestamps --tail=10 flux-kontext 2>&1 \
 		| grep --line-buffered -v "readiness check" \
 		| sed 's/^/\x1b[33m[nim]  \x1b[0m /' & \
