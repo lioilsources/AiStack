@@ -39,6 +39,34 @@ services:
     networks:
       - internal
 
+  # ─────────────────────────────────────────────
+  # gen-queue — robustní Go job queue pro NIM image generation
+  # Nahrazuje nim-kontext-proxy: FLUX Kontext (img2img) + FLUX Schnell (txt2img).
+  # Cloudflare routuje llm.ol1n.com/nim/* přímo sem (port 8091).
+  # Přijme request, vrátí job_id (202), zpracuje přes worker pool s retry.
+  # ─────────────────────────────────────────────
+  gen-queue:
+    build:
+      context: ../services/gen-queue
+    image: aistack/gen-queue:latest
+    container_name: ai-gen-queue
+    restart: unless-stopped
+    environment:
+      - NIM_KONTEXT_URL=http://flux-kontext:8000/v1/infer
+      - NIM_SCHNELL_URL=http://flux-schnell:8000/v1/infer
+      - NIM_KONTEXT_WORKERS=${NIM_KONTEXT_WORKERS:-1}
+      - NIM_SCHNELL_WORKERS=${NIM_SCHNELL_WORKERS:-1}
+      - RESULT_TTL_SECONDS=${RESULT_TTL_SECONDS:-3600}
+      - LISTEN_ADDR=:8091
+    networks:
+      - internal
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8091/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
   gateway:
     build:
       context: ../gateway
@@ -59,35 +87,6 @@ services:
       timeout: 3s
       retries: 5
       start_period: 15s
-
-  # ─────────────────────────────────────────────
-  # nim-kontext-proxy — async wrapper pro FLUX.1-Kontext NIM
-  # Cloudflare routuje llm.ol1n.com/nim/flux-kontext/* sem (port 8004).
-  # Proxy přijme request, vrátí job_id (202), a zpracuje asynchronně —
-  # obchází 100s timeout Cloudflare edge pro dlouhé NIM inference.
-  # ─────────────────────────────────────────────
-  nim-kontext-proxy:
-    build:
-      context: ../services/nim-kontext-proxy
-    image: aistack/nim-kontext-proxy:latest
-    container_name: nim-kontext-proxy
-    restart: unless-stopped
-    ports:
-      - "127.0.0.1:8015:8004"
-    environment:
-      - NIM_KONTEXT_URL=http://flux-kontext:8000
-      - JOB_TTL=3600
-      - OUTPUT_DIR=/output
-    volumes:
-      - ../outputs/nim-kontext:/output
-    networks:
-      - internal
-    healthcheck:
-      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8004/health')"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 30s
 
   # ─────────────────────────────────────────────
   # Cloudflare Tunnel — exposes gateway at llm.ol1n.com

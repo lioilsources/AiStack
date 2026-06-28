@@ -5,10 +5,11 @@ tunnel: 46b3669e-0b5d-4a57-8cc2-6c8625fde590
 credentials-file: /etc/cloudflared/46b3669e-0b5d-4a57-8cc2-6c8625fde590.json
 
 ingress:
-  # nim-kontext-proxy — must come before the general llm.ol1n.com rule
+  # gen-queue — NIM image job queue (FLUX Kontext + FLUX Schnell)
+  # Must come before the general llm.ol1n.com rule.
   - hostname: llm.ol1n.com
-    path: /nim/flux-kontext/.*
-    service: http://nim-kontext-proxy:8004
+    path: /nim/.*
+    service: http://gen-queue:8091
     originRequest:
       connectTimeout: 30s
       keepAliveTimeout: 300s
