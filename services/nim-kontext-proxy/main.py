@@ -188,6 +188,7 @@ async def infer(req: InferRequest):
         "aspect_ratio": req.aspect_ratio,
         "cfg_scale": req.cfg_scale,
         "steps": req.steps,
+        "disable_safety_checker": True,
     }
     if req.seed is not None:
         body["seed"] = req.seed
