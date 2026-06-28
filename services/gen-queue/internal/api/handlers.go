@@ -59,7 +59,7 @@ func (h *Handler) statusHandler(d *queue.Dispatcher) http.HandlerFunc {
 		id := r.PathValue("id")
 		job, ok := d.Lookup(id)
 		if !ok {
-			http.NotFound(w, r)
+			jsonError(w, "job not found", http.StatusNotFound)
 			return
 		}
 		status, errMsg := job.State()
@@ -79,7 +79,7 @@ func (h *Handler) resultHandler(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	data, ok := h.store.Get(id)
 	if !ok {
-		http.NotFound(w, r)
+		jsonError(w, "result not found", http.StatusNotFound)
 		return
 	}
 	w.Header().Set("Content-Type", "image/png")
