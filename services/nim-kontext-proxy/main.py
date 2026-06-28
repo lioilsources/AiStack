@@ -7,6 +7,7 @@ import time
 import uuid
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager
+from pathlib import Path
 from typing import Optional
 
 import requests as _requests
@@ -23,6 +24,8 @@ logger = logging.getLogger("nim-kontext-proxy")
 
 NIM_KONTEXT_URL = os.environ.get("NIM_KONTEXT_URL", "http://flux-kontext:8000")
 JOB_TTL = float(os.environ.get("JOB_TTL", "3600"))
+OUTPUT_DIR = Path(os.environ.get("OUTPUT_DIR", "/output"))
+OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
 _jobs: dict[str, dict] = {}
 _queue: "asyncio.Queue[str]" = None
@@ -101,12 +104,20 @@ def _call_nim(body: dict) -> bytes:
     b64 = artifacts[0].get("base64", "")
     if not b64:
         raise ValueError(f"NIM artifact missing base64: {artifacts[0]}")
-    from PIL import Image as _Pil
+    from PIL import Image as _Pil, ImageStat as _Stat
     raw = base64.b64decode(b64)
+    pil_img = _Pil.open(io.BytesIO(raw)).convert("RGB")
+    mean_brightness = sum(_Stat.Stat(pil_img).mean) / 3.0
     buf = io.BytesIO()
-    _Pil.open(io.BytesIO(raw)).convert("RGB").save(buf, format="PNG")
+    pil_img.save(buf, format="PNG")
     png = buf.getvalue()
-    logger.info("nim.done nim_ms=%d png_kb=%d", int((_now() - t0) * 1000), len(png) // 1024)
+    logger.info("nim.done nim_ms=%d png_kb=%d brightness=%.1f",
+                int((_now() - t0) * 1000), len(png) // 1024, mean_brightness)
+    if len(png) < 10 * 1024 or mean_brightness < 5.0:
+        raise ValueError(
+            f"NIM returned degenerate image (size={len(png)}B brightness={mean_brightness:.1f}) "
+            "– possible Blackwell TRT warm-up failure; retry the request"
+        )
     return png
 
 
@@ -126,9 +137,12 @@ async def _worker() -> None:
                     job_id[:8], queue_wait_ms, _queue.qsize())
         t0 = _now()
         try:
-            job["result"] = await loop.run_in_executor(_executor, run)
+            png = await loop.run_in_executor(_executor, run)
+            job["result"] = png
             job["status"] = "done"
-            logger.info("job.done id=%s total_ms=%d", job_id[:8], int((_now() - t0) * 1000))
+            out_path = OUTPUT_DIR / f"{job_id}.png"
+            out_path.write_bytes(png)
+            logger.info("job.done id=%s total_ms=%d saved=%s", job_id[:8], int((_now() - t0) * 1000), out_path)
         except asyncio.CancelledError:
             raise
         except Exception as e:

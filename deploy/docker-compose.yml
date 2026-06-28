@@ -77,6 +77,9 @@ services:
     environment:
       - NIM_KONTEXT_URL=http://flux-kontext:8000
       - JOB_TTL=3600
+      - OUTPUT_DIR=/output
+    volumes:
+      - ../outputs/nim-kontext:/output
     networks:
       - internal
     healthcheck:
