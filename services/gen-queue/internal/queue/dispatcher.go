@@ -106,6 +106,11 @@ func (d *Dispatcher) process(e *jobEntry) {
 	e.job.SetRunning()
 	slog.Info("job started", "dispatcher", d.name, "id", e.job.ID)
 
+	// Once the job is terminal, evict its status entry after the same TTL as the
+	// result. Otherwise GET /jobs/{id} keeps reporting a stale "done" after the
+	// result is gone (confusing the client), and d.jobs grows without bound.
+	defer time.AfterFunc(d.ttl, func() { d.jobs.Delete(e.job.ID) })
+
 	var result []byte
 	var err error
 	for attempt, delay := range retryDelays {
