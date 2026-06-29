@@ -32,6 +32,7 @@ deploy/                       compose soubory, litellm konfigurace, reasoning pa
 services/
   controller-manager/         Go: dynamic model switching přes docker.sock
     config/models.yaml        registr spravovaných stacků
+  gen-queue/                  Go: async job queue pro FLUX NIM (cloudflared /nim/* → :8091)
   image-api/                  Python: FLUX.1-dev + Qwen image edit
 
 cache/
@@ -64,6 +65,27 @@ Model swap = přepsat symlink + update `.env`. CLAUDE.md a compose soubory se ne
 
 Podrobnosti → `SKILL.md`.
 
+## Image generation — gen-queue (`/nim/*`)
+
+`services/gen-queue/` (Go) je robustní async job queue pro FLUX NIM modely.
+Nahrazuje původní Python `nim-kontext-proxy`. Cloudflare routuje
+`llm.ol1n.com/nim/*` přímo na `gen-queue:8091` (mimo hlavní gateway).
+
+- `POST /nim/{flux-schnell|flux-kontext}/v1/infer` → `202 {id, queue_position}`
+- `GET  /nim/{model}/jobs/{id}`        → `{status: queued|running|done|error}`
+- `GET  /nim/{model}/jobs/{id}/result` → PNG bytes
+- `GET  /health`                       → `{"status":"ok","service":"gen-queue"}`
+
+Submit vrátí job_id okamžitě (obchází CF 100s edge timeout). Worker pool volá NIM
+synchronně, retry na 5xx (3 pokusy 0/5/10 s), 4xx je non-retryable. Výsledky jsou
+in-memory s TTL `RESULT_TTL_SECONDS` (default 3600 s); po TTL se evictuje
+**výsledek i job-status** společně → `/jobs/{id}` i `/result` pak vrací 404. Stav
+je čistě in-memory — restart gen-queue ztratí všechny joby.
+
+Kontejnery `flux-schnell` / `flux-kontext` (NIM) se spouští přes
+`docker-compose.image-nim.yaml` (`make up-image-schnell` / `up-image-kontext`).
+Tok requestu sleduj přes `make logs-kontext` (`[cf]` → `[queue]` → `[nim]`).
+
 ## Porty (vše `127.0.0.1` pokud není uvedeno)
 
 | port | kontejner | poznámka |
@@ -72,7 +94,7 @@ Podrobnosti → `SKILL.md`.
 | 8001 | dev | NIM |
 | 8003 | ocr-api | NIM |
 | 8004 | translate | NIM |
-| 8015 | nim-kontext-proxy | Python async proxy (container port 8004) |
+| 8091 | gen-queue | Go async job queue (FLUX NIM), interní — cloudflared /nim/* |
 | 8005 | swarm-embed | vLLM, profile: embed |
 | 8010 | swarm-nano | vLLM |
 | 8011 | swarm-coder | vLLM (NGC image) |
