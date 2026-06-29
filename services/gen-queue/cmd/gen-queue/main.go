@@ -37,14 +37,18 @@ func main() {
 	kontextWorkers := envInt("NIM_KONTEXT_WORKERS", 1)
 	schnellWorkers := envInt("NIM_SCHNELL_WORKERS", 1)
 	ttlSec         := envInt("RESULT_TTL_SECONDS", 3600)
+	// Per-call NIM inference timeout. FLUX Kontext on GB10 routinely takes
+	// 110–185 s; 180 s was too tight and caused spurious timeouts + retries.
+	inferSec       := envInt("NIM_INFER_TIMEOUT_SECONDS", 300)
 	addr           := envOr("LISTEN_ADDR", ":8091")
 
-	ttl := time.Duration(ttlSec) * time.Second
+	ttl          := time.Duration(ttlSec) * time.Second
+	inferTimeout := time.Duration(inferSec) * time.Second
 
 	results := store.New()
 
-	kontextBackend := backend.NewNimKontext(nimKontextURL, 180*time.Second)
-	schnellBackend := backend.NewNimSchnell(nimSchnellURL, 180*time.Second)
+	kontextBackend := backend.NewNimKontext(nimKontextURL, inferTimeout)
+	schnellBackend := backend.NewNimSchnell(nimSchnellURL, inferTimeout)
 
 	kontextDisp := queue.New("kontext", kontextWorkers, kontextBackend, results, ttl)
 	schnellDisp := queue.New("schnell", schnellWorkers, schnellBackend, results, ttl)
@@ -65,6 +69,7 @@ func main() {
 		"kontext_workers", kontextWorkers,
 		"schnell_workers", schnellWorkers,
 		"result_ttl", ttl,
+		"infer_timeout", inferTimeout,
 	)
 
 	if err := http.ListenAndServe(addr, mux); err != nil {
