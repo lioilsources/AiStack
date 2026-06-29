@@ -41,14 +41,18 @@ func main() {
 	// 110–185 s; 180 s was too tight and caused spurious timeouts + retries.
 	inferSec       := envInt("NIM_INFER_TIMEOUT_SECONDS", 300)
 	addr           := envOr("LISTEN_ADDR", ":8091")
+	// Inject "disable_safety_checker":true into NIM requests to bypass the
+	// Cosmos prompt blocklist + output NSFW filter (self-hosted, own use).
+	// Requires NIM_ALLOW_UNCHECKED_GENERATION=true on the NIM containers.
+	disableSafety  := envOr("NIM_DISABLE_SAFETY_CHECKER", "true") == "true"
 
 	ttl          := time.Duration(ttlSec) * time.Second
 	inferTimeout := time.Duration(inferSec) * time.Second
 
 	results := store.New()
 
-	kontextBackend := backend.NewNimKontext(nimKontextURL, inferTimeout)
-	schnellBackend := backend.NewNimSchnell(nimSchnellURL, inferTimeout)
+	kontextBackend := backend.NewNimKontext(nimKontextURL, inferTimeout, disableSafety)
+	schnellBackend := backend.NewNimSchnell(nimSchnellURL, inferTimeout, disableSafety)
 
 	kontextDisp := queue.New("kontext", kontextWorkers, kontextBackend, results, ttl)
 	schnellDisp := queue.New("schnell", schnellWorkers, schnellBackend, results, ttl)
@@ -70,6 +74,7 @@ func main() {
 		"schnell_workers", schnellWorkers,
 		"result_ttl", ttl,
 		"infer_timeout", inferTimeout,
+		"disable_safety_checker", disableSafety,
 	)
 
 	if err := http.ListenAndServe(addr, mux); err != nil {
