@@ -10,15 +10,16 @@ import (
 // The container accepts {"prompt","width","height","steps","seed"}
 // and returns {"artifacts":[{"base64":"..."}]}.
 type NimSchnell struct {
-	url     string
-	timeout time.Duration
-	client  *http.Client
+	url           string
+	timeout       time.Duration
+	client        *http.Client
+	disableSafety bool
 }
 
-func NewNimSchnell(url string, timeout time.Duration) *NimSchnell {
-	return &NimSchnell{url: url, timeout: timeout, client: &http.Client{}}
+func NewNimSchnell(url string, timeout time.Duration, disableSafety bool) *NimSchnell {
+	return &NimSchnell{url: url, timeout: timeout, client: &http.Client{}, disableSafety: disableSafety}
 }
 
 func (n *NimSchnell) Infer(ctx context.Context, payload []byte) ([]byte, error) {
-	return doInfer(ctx, n.client, n.url, n.timeout, payload)
+	return doInfer(ctx, n.client, n.url, n.timeout, payload, n.disableSafety)
 }

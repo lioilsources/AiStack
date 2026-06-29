@@ -10,15 +10,16 @@ import (
 // The container accepts {"prompt","image","cfg_scale","steps","seed","aspect_ratio"}
 // and returns {"artifacts":[{"base64":"..."}]}.
 type NimKontext struct {
-	url     string
-	timeout time.Duration
-	client  *http.Client
+	url           string
+	timeout       time.Duration
+	client        *http.Client
+	disableSafety bool
 }
 
-func NewNimKontext(url string, timeout time.Duration) *NimKontext {
-	return &NimKontext{url: url, timeout: timeout, client: &http.Client{}}
+func NewNimKontext(url string, timeout time.Duration, disableSafety bool) *NimKontext {
+	return &NimKontext{url: url, timeout: timeout, client: &http.Client{}, disableSafety: disableSafety}
 }
 
 func (n *NimKontext) Infer(ctx context.Context, payload []byte) ([]byte, error) {
-	return doInfer(ctx, n.client, n.url, n.timeout, payload)
+	return doInfer(ctx, n.client, n.url, n.timeout, payload, n.disableSafety)
 }

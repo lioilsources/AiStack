@@ -22,7 +22,14 @@ type Backend interface {
 
 // doInfer posts payload to url with the given timeout and decodes the NIM
 // artifacts response ({"artifacts":[{"base64":"..."}]}) into PNG bytes.
-func doInfer(ctx context.Context, client *http.Client, url string, timeout time.Duration, payload []byte) ([]byte, error) {
+// When disableSafety is set, it injects "disable_safety_checker":true into the
+// request so the NIM prompt blocklist + output NSFW filter are bypassed
+// (requires NIM_ALLOW_UNCHECKED_GENERATION=true on the NIM container).
+func doInfer(ctx context.Context, client *http.Client, url string, timeout time.Duration, payload []byte, disableSafety bool) ([]byte, error) {
+	if disableSafety {
+		payload = withSafetyDisabled(payload)
+	}
+
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
@@ -48,6 +55,21 @@ func doInfer(ctx context.Context, client *http.Client, url string, timeout time.
 	}
 
 	return decodeArtifacts(body)
+}
+
+// withSafetyDisabled adds "disable_safety_checker":true to a JSON request body.
+// If the payload can't be parsed/re-marshaled it's returned unchanged.
+func withSafetyDisabled(payload []byte) []byte {
+	var m map[string]any
+	if err := json.Unmarshal(payload, &m); err != nil {
+		return payload
+	}
+	m["disable_safety_checker"] = true
+	out, err := json.Marshal(m)
+	if err != nil {
+		return payload
+	}
+	return out
 }
 
 func decodeArtifacts(body []byte) ([]byte, error) {
