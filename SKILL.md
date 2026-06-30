@@ -1,7 +1,66 @@
-# SKILL — přidání nového stack modulu
+# SKILL — AiStack: provoz a stavba stack modulů
 
-Checklist a konvence pro přidání nového LLM/VLM kontejneru do AiStacku.
-Předpoklad: pracujeme z `/home/ol1n/deploy/AiStack/`.
+Referenční příručka: jak AiStack **provozovat** (up/down/logs), jeho **pravidla**,
+rozdíl mezi **NIM** a **vLLM** moduly (+ úskalí), a checklist na **přidání nového** modulu.
+Předpoklad: **vždy** pracovat z `/home/ol1n/deploy/AiStack/` (jinak se nenačte `.env`).
+
+---
+
+## A. Provoz — up / down / logs / ps
+
+Vše přes `make` (zdroj pravdy = `Makefile`). `make ps` ukáže stav, `make logs` follow.
+
+| Modul | nahodit | shodit | logy |
+|-------|---------|--------|------|
+| **celý stack** (LLM+gateway+controller+CF) | `make up` | `make down` | `make logs` / `make ps` |
+| **LLM** (dev NIM + litellm) | `make up-llm` | `make down-llm` | `make logs-dev` |
+| jen **dev** kontejner | `make up-dev` | `make down-dev` | `make logs-dev` |
+| **translate** (vLLM) | `make up-translate` | `make down-translate` | `docker logs -f translate` |
+| **swarm** (nano+coder+embed…) | `make up-swarm` | `make down-swarm` | `docker logs -f swarm-nano` |
+| swarm **director** (on-demand) | `make up-swarm-director` | `make down-swarm-director` | `docker logs -f swarm-director` |
+| **image NIM** (FLUX, 1 z 3) | `make up-image-{schnell\|kontext\|dev}` | `make down-image-nim` | `make logs-image` / `make logs-kontext` |
+| **tune-image** (Card Forge) | `make up-tune-image` ¹ | `make down-tune-image` | `docker logs -f tune-builder` |
+| **ocr** | `make up-ocr` | `make down-ocr` | `docker logs -f ocr-api` |
+
+¹ `up-tune-image` **stopne `dev`** (uvolní paměť); zpět přes `make up-llm`.
+
+Univerzální: `docker logs -f --tail 50 <kontejner>` · stav health: `docker inspect <c> --format '{{.State.Health.Status}}'`.
+Po editaci `litellm_config.yaml` stačí restart gatewaye, ne celého stacku:
+`docker compose -f deploy/docker-compose.llm.yaml restart litellm`.
+
+---
+
+## B. Pravidla AiStacku
+
+- **Spouštět z `/home/ol1n/deploy/AiStack/`** — jinak `.env` nenačte (`--env-file .env` je relativní).
+- **Model swap = přepsat symlink `cache/{role}` + `HF_MODEL_{ROLE}` v `.env`.** Compose ani CLAUDE.md se nemění.
+- **NIM kontejnery NIKDY nesdílejí cache dir** (kompilované engine artefakty). HF/vLLM se stejným modelem cache sdílet **mohou** (s `HF_HUB_OFFLINE=1` jen čtou).
+- **`--kv-cache-dtype fp8` NEFUNGUJE na GB10/Blackwell** — tokenový šum. Nepoužívat.
+- **`huggingface-cli download` je deprecated** → `hf download`.
+- **vLLM s `HF_HUB_OFFLINE=1`** — model musí být stažený **před** startem, jinak kontejner spadne.
+- **Síť `ai`** (external) — vytváří ji jen `docker-compose.yml`, ostatní compose ji přebírají.
+- **128 GB unified pool** (CPU+GPU sdílí) — před nasazením zkontroluj `make ps`, `nvidia-smi`, `free -g`.
+
+---
+
+## C. NIM vs vLLM — rozdíly a úskalí
+
+|  | **NIM** | **vLLM** |
+|--|---------|----------|
+| image | `nvcr.io/nim/{org}/{model}:{tag}` | `vllm/vllm-openai:${SWARM_VLLM_VERSION}` |
+| auth | `NGC_API_KEY` | `HF_TOKEN` |
+| cache mount | `/opt/nim/.cache` | `/root/.cache/huggingface/hub` |
+| model + engine | self-contained, NIM **stáhne sám** při 1. startu | váhy **předem** (`hf download`) + `HF_HUB_OFFLINE=1` |
+| konfigurace | jen `NIM_*` env (nepřijímá vLLM args) | positional model + vLLM flagy v `command` |
+| kvantizace | profil zabalený v image (NVFP4 auto) | autodetekce z `hf_quant_config.json` + NVFP4 env |
+
+**Úskalí (z praxe):**
+
+- **NIM dangling symlink → mount fail.** Když `cache/{role}` ukazuje na neexistující adresář, `docker` start spadne na `mkdir '…': file exists`. **Před `up` vytvořit cílový adresář:** `mkdir -p cache/models/ngc/{slug}` (NIM si ho pak naplní).
+- **NGC download se umí zaseknout** (NET I/O stojí, cache neroste). Restart NIM sice resumuje, ale **duplikuje rozdělané shardy** v `…/tmp/` (každý 2×) → plýtvá místem. Při opakovaném stallu **přejít na HF/vLLM ekvivalent** (stabilnější CDN, např. `nvidia/Qwen3-32B-FP4` místo NIM `qwen3-32b-dgx-spark`). Sledovat: `du -sh cache/{role}/`, `docker stats <c>`.
+- **NIM neloguje průběh stahování** — `Downloaded filename:` zaloguje až po **dokončení** shardu; ticho v logu ≠ zaseknuté. Ověřit přes `du`/`docker stats`, ne podle logu.
+- **NVFP4 env (vLLM):** dense modely → `VLLM_NVFP4_GEMM_BACKEND=marlin`; MoE modely → `VLLM_USE_FLASHINFER_MOE_FP4=1` + `VLLM_FLASHINFER_MOE_BACKEND=throughput`.
+- **Vypnutí reasoningu** (Qwen3/Nemotron) řešit v `litellm_config.yaml` přes `extra_body.chat_template_kwargs.enable_thinking: false` — ne `/no_think` tokenem v promptu.
 
 ---
 

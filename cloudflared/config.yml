@@ -1,8 +1,8 @@
 # Cloudflare Tunnel config — AiStack on DGX Spark
 # Mounted into the container at /etc/cloudflared/
 
-tunnel: 46b3669e-0b5d-4a57-8cc2-6c8625fde590
-credentials-file: /etc/cloudflared/46b3669e-0b5d-4a57-8cc2-6c8625fde590.json
+tunnel: f3cb3ac1-d9fa-4c78-9d87-ff3cab6c7051
+credentials-file: /etc/cloudflared/f3cb3ac1-d9fa-4c78-9d87-ff3cab6c7051.json
 
 ingress:
   # gen-queue — NIM image job queue (FLUX Kontext + FLUX Schnell)

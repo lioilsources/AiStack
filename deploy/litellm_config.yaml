@@ -4,10 +4,11 @@ litellm_settings:
 
 router_settings:
   num_retries: 0
-  timeout: 5
+  timeout: 120
   fallbacks:
-    - lab: ["dev", "swarm-coder"]
-    - dev: ["swarm-coder"]
+    - lab: ["dev", "swarm-coder", "translate"]
+    - dev: ["swarm-coder", "translate"]
+    - swarm-coder: ["translate"]
 
 model_list:
   - model_name: lab
