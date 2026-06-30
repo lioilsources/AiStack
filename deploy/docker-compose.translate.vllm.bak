@@ -1,0 +1,56 @@
+# Translate module: nvidia/Qwen3-32B-FP4 (NVFP4) přes vLLM pro hromadné překlady.
+#
+# Standalone: docker compose --env-file .env -f deploy/docker-compose.translate.yaml up -d
+#           → nebo: make up-translate
+#
+# Model: nvidia/Qwen3-32B-FP4 — ModelOpt NVFP4 váhy (~17 GB), dense, běží přes vLLM
+#        (stejný backend jako swarm-nano/coder/director). Dříve to byl NIM dgx-spark
+#        kontejner, ale NGC download se opakovaně zasekával → přešlo na HF/vLLM.
+#
+# Předpoklad: model stažený do CACHE_TRANSLATE (HF_HUB_OFFLINE=1).
+#             hf download nvidia/Qwen3-32B-FP4 --token $HF_TOKEN --cache-dir $CACHE_TRANSLATE
+# Paměť: NVFP4 váhy ~17 GB + KV (max-model-len 4096); util 0.22 → ~28 GB strop.
+# Sdílí GPU pool s 'dev' — bez rebootu může být těsno; nejdřív: make down-llm.
+
+services:
+
+  translate:
+    image: vllm/vllm-openai:${SWARM_VLLM_VERSION}
+    container_name: translate
+    restart: unless-stopped
+    command: >
+      ${HF_MODEL_TRANSLATE}
+      --served-model-name translate
+      --gpu-memory-utilization 0.30
+      --max-model-len 4096
+      --kv-cache-dtype auto
+      --trust-remote-code
+    environment:
+      - HF_TOKEN=${HF_TOKEN}
+      - HF_HUB_OFFLINE=1
+      - VLLM_NVFP4_GEMM_BACKEND=marlin
+    ports:
+      - "127.0.0.1:8004:8000"
+    shm_size: 16gb
+    volumes:
+      - ${CACHE_TRANSLATE}:/root/.cache/huggingface/hub
+    networks:
+      - internal
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8000/v1/models"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 600s
+
+networks:
+  internal:
+    external: true
+    name: ai

@@ -1,27 +1,50 @@
-# Translate module: Qwen3-32B DGX Spark NIM pro hromadné překlady.
+# Translate module: nvidia/Qwen3-32B-FP4 (NVFP4) přes TensorRT-LLM pro hromadné překlady.
 #
 # Standalone: docker compose --env-file .env -f deploy/docker-compose.translate.yaml up -d
 #           → nebo: make up-translate
 #
-# Paměť: NIM dgx-spark varianta použije NVFP4 automaticky (~15–18 GB).
-# Sdílí GPU pool s 'dev' — bez rebootu může být těsno; nejdřív: make down-llm.
+# Backend: TensorRT-LLM (trtllm-serve, pytorch backend) — nativní Blackwell FP4
+#          (nvfp4_gemm cutlass/cublaslt, attn_backend TRTLLM). Dříve vLLM — viz
+#          záloha docker-compose.translate.vllm.bak. Pozn.: měřeno bylo vLLM o něco
+#          rychlejší (memory-bound LPDDR5X), TRT nasazen na vyžádání.
+#
+# Model: sdílí HF cache s vLLM (CACHE_TRANSLATE, RO mount). trtllm-serve dostává
+#        LOKÁLNÍ cestu ke snapshotu (ne HF handle) + --tokenizer — jinak by tokenizer
+#        loader šel online a s HF_HUB_OFFLINE=1 spadl na tokenizer=None.
+# Engine: TRT staví engine při startu (~4 min) → start_period 600s.
 
 services:
 
   translate:
-    image: nvcr.io/nim/qwen/qwen3-32b-dgx-spark:1.1.0-variant
+    image: nvcr.io/nvidia/tensorrt-llm/release:1.3.0rc20
     container_name: translate
     restart: unless-stopped
+    command:
+      - bash
+      - -c
+      - >
+        trtllm-serve /root/.cache/huggingface/hub/models--nvidia--Qwen3-32B-FP4/snapshots/16426c6eb87be9e27c14cc9fb318f9c7a5f8588c
+        --served_model_name translate
+        --tokenizer /root/.cache/huggingface/hub/models--nvidia--Qwen3-32B-FP4/snapshots/16426c6eb87be9e27c14cc9fb318f9c7a5f8588c
+        --host 0.0.0.0
+        --port 8000
+        --backend pytorch
+        --max_batch_size 16
+        --max_seq_len 4096
+        --kv_cache_free_gpu_memory_fraction 0.5
+        --kv_cache_dtype auto
+        --trust_remote_code
     environment:
-      - NGC_API_KEY=${NGC_API_KEY}
-      - NIM_SERVED_MODEL_NAME=translate
-      - NIM_MAX_MODEL_LEN=4096
-      - NIM_GPU_MEMORY_UTILIZATION=0.22
+      - HF_HUB_OFFLINE=1
     ports:
       - "127.0.0.1:8004:8000"
+    ipc: host
+    ulimits:
+      memlock: -1
+      stack: 67108864
     shm_size: 16gb
     volumes:
-      - ${CACHE_TRANSLATE}:/opt/nim/.cache
+      - ${CACHE_TRANSLATE}:/root/.cache/huggingface/hub:ro
     networks:
       - internal
     deploy:
@@ -36,7 +59,7 @@ services:
       interval: 30s
       timeout: 10s
       retries: 5
-      start_period: 300s
+      start_period: 600s
 
 networks:
   internal:
