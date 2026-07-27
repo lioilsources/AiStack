@@ -48,4 +48,27 @@ ingress:
         audTag:
           - 4bc655c0fec0da2ff6a4922a9fc042db2646efb020054735c365ac4cbad29a0b
 
+  # chat.ol1n.com → knihovní RAG chatbot (WorldLibraryProject rag/server.py :8090).
+  # Server běží na SPARK hostu → host.docker.internal (stejný vzor jako ComfyUI);
+  # pokud poběží na M2, nahraď service za http://<M2-LAN-IP>:8090.
+  #
+  # Jednorázově před prvním použitím:
+  #   1. DNS route:  cloudflared tunnel route dns f3cb3ac1-d9fa-4c78-9d87-ff3cab6c7051 chat.ol1n.com
+  #      (nebo: docker run --rm -v $PWD/cloudflared:/etc/cloudflared cloudflare/cloudflared:latest
+  #             tunnel --config /etc/cloudflared/config.yml route dns f3cb3ac1-d9fa-4c78-9d87-ff3cab6c7051 chat.ol1n.com)
+  #   2. Zero Trust dashboard → Access App pro chat.ol1n.com, do audTag níže doplnit
+  #      její AUD a odkomentovat access blok (do té doby je hostname veřejný!).
+  #   3. docker compose -f deploy/docker-compose.yml restart cloudflared-1 cloudflared-2
+  - hostname: chat.ol1n.com
+    service: http://host.docker.internal:8090
+    originRequest:
+      connectTimeout: 30s
+      tcpKeepAlive: 30s
+      keepAliveTimeout: 300s
+      # access:
+      #   required: true
+      #   teamName: ol1n
+      #   audTag:
+      #     - <AUD-tag-nové-Access-App-pro-chat.ol1n.com>
+
   - service: http_status:404
