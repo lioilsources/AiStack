@@ -2,7 +2,8 @@
 #
 # Standalone: docker compose -f deploy/docker-compose.llm.yaml up -d
 # Env vars:   HF_TOKEN, VLLM_VERSION, HF_MODEL_LAB, HF_MODEL_DEV, CACHE_LAB, CACHE_DEV
-#             Překlady: HF_MODEL_TRANSLATE, CACHE_TRANSLATE (docker-compose.translate.yaml)
+#             Fallback:  SWARM_VLLM_VERSION, HF_MODEL_FALLBACK, CACHE_FALLBACK
+#             Překlady:  HF_MODEL_TRANSLATE, CACHE_TRANSLATE (docker-compose.translate.yaml)
 
 services:
 
@@ -65,6 +66,46 @@ services:
       timeout: 10s
       retries: 5
       start_period: 300s
+
+  fallback:
+    # LiquidAI/LFM2.5-350M — nejmenší/nejrychlejší model, VŽDY resident (~1 GB).
+    # Poslední článek fallback řetězce v LiteLLM: když spadne lab/dev/translate/
+    # swarm-coder/director, odpoví aspoň tenhle. Rychlá edge inference.
+    # Pozn.: nouzová náhrada s použitelnou češtinou (Qwen3-4B-AWQ ~2,5 GB vah).
+    # 0.08/16384: KV pro 16k kontext (RAG requesty) ≈ 2,4 GiB — do 0.05 se nevešla.
+    image: vllm/vllm-openai:${SWARM_VLLM_VERSION}
+    container_name: fallback
+    restart: unless-stopped
+    command: >
+      ${HF_MODEL_FALLBACK}
+      --served-model-name fallback
+      --gpu-memory-utilization 0.08
+      --max-model-len 16384
+      --max-num-seqs 8
+      --trust-remote-code
+    environment:
+      - HF_TOKEN=${HF_TOKEN}
+      - HF_HUB_OFFLINE=1
+    ports:
+      - "127.0.0.1:8002:8000"
+    shm_size: 2gb
+    volumes:
+      - ${CACHE_FALLBACK}:/root/.cache/huggingface/hub
+    networks:
+      - internal
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8000/v1/models"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 120s
 
   litellm:
     image: ghcr.io/berriai/litellm:main-latest

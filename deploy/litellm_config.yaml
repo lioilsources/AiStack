@@ -4,11 +4,18 @@ litellm_settings:
 
 router_settings:
   num_retries: 0
-  timeout: 120
+  # 300: dlouhé RAG dotazy (knihovní chatbot) běží na translate i ~4 min;
+  # 120s router timeout je stínal a tiše přepadal na fallback
+  timeout: 300
+  # 'fallback' (LiquidAI/LFM2.5-350M) je vždy-běžící poslední záchrana — na konci
+  # každého řetězce, aby klient dostal odpověď místo 5xx, i když spadne poslední článek.
   fallbacks:
-    - lab: ["dev", "swarm-coder", "translate"]
-    - dev: ["swarm-coder", "translate"]
-    - swarm-coder: ["translate"]
+    - lab: ["dev", "swarm-coder", "translate", "fallback"]
+    - dev: ["swarm-coder", "translate", "fallback"]
+    - swarm-coder: ["translate", "fallback"]
+    - translate: ["fallback"]
+    - swarm-director: ["fallback"]
+    - shop: ["fallback"]
 
 model_list:
   - model_name: lab
@@ -95,6 +102,54 @@ model_list:
       extra_body:
         chat_template_kwargs:
           enable_thinking: false
+
+  # ── Fallback — LiquidAI/LFM2.5-350M, vždy resident, poslední záchrana ──────────
+  # Qwen3 rodina jako translate → enable_thinking:false patří i sem.
+  - model_name: fallback
+    litellm_params:
+      model: openai/fallback
+      api_base: http://fallback:8000/v1
+      api_key: dummy
+      timeout: 120
+      extra_body:
+        chat_template_kwargs:
+          enable_thinking: false
+
+  # ── OCR — Qwen2.5-VL-7B přes vLLM (VLM, image_url v chat/completions) ──────────
+  # On-demand (controller: /ctrl/activate?model=ocr). Appka volá model "ocr".
+  # Default sampling params proti zacyklení Qwenu na tabulkových/matričních skenech
+  # (bez nich greedy dekódování opakuje řádky). Klient je může přebít. TrOCR je ignoruje.
+  - model_name: ocr
+    litellm_params:
+      model: openai/ocr
+      api_base: http://ocr-api:8000/v1
+      api_key: dummy
+      timeout: 300
+      temperature: 0.1
+      frequency_penalty: 0.6
+      presence_penalty: 0.4
+
+  # ── Shopify (ChatShop) — chat + embeddingy (docker-compose.shopify.yaml) ───────
+  # shop = Qwen3-32B-FP4 (RAG chat asistent + extrakce atributů při ingestu)
+  - model_name: shop
+    litellm_params:
+      model: openai/shop
+      api_base: http://shop:8000/v1
+      api_key: dummy
+      timeout: 300
+      extra_body:
+        chat_template_kwargs:
+          enable_thinking: false
+
+  # shop-embed = BAAI/bge-m3 (1024 dim) — /v1/embeddings
+  - model_name: shop-embed
+    litellm_params:
+      model: openai/shop-embed
+      api_base: http://shop-embed:8000/v1
+      api_key: dummy
+      timeout: 60
+    model_info:
+      mode: embedding
 
 general_settings:
   # ── NIM pass-through — nativní /v1/infer endpoint ──────────────────────────
