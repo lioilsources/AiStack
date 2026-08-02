@@ -30,7 +30,8 @@ services:
         --port 8000
         --backend pytorch
         --max_batch_size 16
-        --max_seq_len 4096
+        --max_seq_len 16384
+        --max_num_tokens 16384
         --kv_cache_free_gpu_memory_fraction 0.5
         --kv_cache_dtype auto
         --trust_remote_code
