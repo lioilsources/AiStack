@@ -58,6 +58,15 @@ services:
       - NIM_SCHNELL_WORKERS=${NIM_SCHNELL_WORKERS:-1}
       - RESULT_TTL_SECONDS=${RESULT_TTL_SECONDS:-3600}
       - LISTEN_ADDR=:8091
+      # UGC tovarna (koncept -> cleanplate -> TRELLIS -> push na NAS po LAN)
+      - UGC_COMFY_URL=${UGC_COMFY_URL:-http://host.docker.internal:8188}
+      - UGC_NAS_URL=${UGC_NAS_URL:-http://192.168.88.88:8095}
+      - UGC_CHECKPOINT=${UGC_CHECKPOINT:-Illustrious-XL-v2.0.safetensors}
+      - UGC_SPOOL=/spool
+    volumes:
+      - ugc-spool:/spool
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     networks:
       - internal
     healthcheck:
@@ -128,4 +137,5 @@ networks:
     name: ai
 
 volumes:
+  ugc-spool:
   controller-state:

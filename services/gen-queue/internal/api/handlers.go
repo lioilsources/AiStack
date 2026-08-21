@@ -9,6 +9,7 @@ import (
 
 	"github.com/ol1n/AiStack/gen-queue/internal/queue"
 	"github.com/ol1n/AiStack/gen-queue/internal/store"
+	"github.com/ol1n/AiStack/gen-queue/internal/ugc"
 )
 
 type Handler struct {
@@ -91,4 +92,36 @@ func jsonError(w http.ResponseWriter, msg string, code int) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(code)
 	json.NewEncoder(w).Encode(map[string]string{"error": msg}) //nolint:errcheck
+}
+
+// RegisterUGC exposes the UGC factory pipeline (see internal/ugc).
+func RegisterUGC(mux *http.ServeMux, pipe *ugc.Pipeline) {
+	mux.HandleFunc("POST /ugc/generate", func(w http.ResponseWriter, r *http.Request) {
+		var req ugc.Request
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			jsonError(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		job, err := pipe.Submit(req)
+		if err != nil {
+			jsonError(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusAccepted)
+		json.NewEncoder(w).Encode(job) //nolint:errcheck
+	})
+	mux.HandleFunc("GET /ugc/jobs", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(pipe.List()) //nolint:errcheck
+	})
+	mux.HandleFunc("GET /ugc/jobs/{id}", func(w http.ResponseWriter, r *http.Request) {
+		job := pipe.Get(r.PathValue("id"))
+		if job == nil {
+			jsonError(w, "job not found", http.StatusNotFound)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(job) //nolint:errcheck
+	})
 }
