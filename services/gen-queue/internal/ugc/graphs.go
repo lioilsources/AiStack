@@ -86,16 +86,19 @@ func ref(id string, slot int) []any { return []any{id, slot} }
 
 // PromptFor skladá finální prompt konceptu z kategorie a stylu.
 func PromptFor(category, style, prompt string) (positive, negative string) {
-	// "no character" v pozitivnim promptu nestaci - Illustrious item stejne
-	// posadi na bustu. Musi byt "empty/floating" + tvrde negativy na telo.
+	// Illustrious/Pony jsou danbooru modely - anglicke vety ("no character",
+	// "empty item") ignoruji a kresli postavy dal. Funguje doslovny tag
+	// "no humans" + "still life"/"object focus"; negativ mluvi stejnym
+	// dialektem (1girl/1boy/solo). Overeno: bez toho prisel bust i cely ninja.
 	base := fmt.Sprintf(
-		"masterpiece, best quality, %s, %s, single object, empty item, floating, "+
-			"product photography, centered, 3/4 view, game asset, "+
-			"plain white background, studio lighting",
+		"masterpiece, best quality, no humans, still life, object focus, "+
+			"%s, %s, single object, centered, simple background, "+
+			"white background, game asset",
 		prompt, style)
-	neg := "head, face, bust, mannequin, body, wearing, portrait, character, " +
-		"person, human, hands, text, watermark, signature, logo, " +
-		"multiple objects, cropped, blurry, child, loli, nsfw"
+	neg := "1girl, 1boy, solo, multiple girls, multiple boys, character, " +
+		"full body, portrait, head, face, hands, mannequin, wearing, " +
+		"text, watermark, signature, logo, multiple objects, cropped, " +
+		"blurry, child, loli, nsfw"
 	_ = category
 	return base, neg
 }
