@@ -42,9 +42,13 @@ func trellisGraph(inputImage string, seed int64, filenamePrefix string) map[stri
 			"modelname": "microsoft/TRELLIS.2-4B", "backend": "sdpa", "device": "cuda",
 			"low_vram": true, "keep_models_loaded": true, "conv_backend": "flex_gemm",
 			"sparse_backend": "sdpa", "use_reconviagen": false}),
-		"2": node("LoadImage", in{"image": inputImage}),
+		// LoadImage zahazuje alfu; Trellis2LoadImageWithTransparency (slot 2)
+		// ji drzi a preprocess s remove_background=false ji pouzije jako masku.
+		// RMBG cleanplate ma mimo masku vynulovane RGB - bez alfy by TRELLIS
+		// dostal cerny obrazek (presne tak spadl prvni tovarni beh).
+		"2": node("Trellis2LoadImageWithTransparency", in{"image": inputImage}),
 		"3": node("Trellis2PreProcessImage", in{
-			"image": ref("2", 0), "padding": 0, "remove_background": false, "max_size": 2048}),
+			"image": ref("2", 2), "padding": 0, "remove_background": false, "max_size": 2048}),
 		"4": node("Trellis2MeshWithVoxelGenerator", in{
 			"pipeline": ref("1", 0), "image": ref("3", 0), "seed": seed,
 			"pipeline_type": "1024_cascade", "sparse_structure_steps": 12,
@@ -82,11 +86,15 @@ func ref(id string, slot int) []any { return []any{id, slot} }
 
 // PromptFor skladá finální prompt konceptu z kategorie a stylu.
 func PromptFor(category, style, prompt string) (positive, negative string) {
+	// "no character" v pozitivnim promptu nestaci - Illustrious item stejne
+	// posadi na bustu. Musi byt "empty/floating" + tvrde negativy na telo.
 	base := fmt.Sprintf(
-		"masterpiece, best quality, %s, %s, single object, centered, 3/4 view, "+
-			"game asset, item icon, plain white background, no character, studio lighting",
+		"masterpiece, best quality, %s, %s, single object, empty item, floating, "+
+			"product photography, centered, 3/4 view, game asset, "+
+			"plain white background, studio lighting",
 		prompt, style)
-	neg := "character, person, human, hands, text, watermark, signature, logo, " +
+	neg := "head, face, bust, mannequin, body, wearing, portrait, character, " +
+		"person, human, hands, text, watermark, signature, logo, " +
 		"multiple objects, cropped, blurry, child, loli, nsfw"
 	_ = category
 	return base, neg
