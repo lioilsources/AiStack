@@ -12,7 +12,11 @@ Pravidlo: každý nový img→3D model před instalací zkontrolovat na EU výji
 Stav ARM64 (GB10, ověřeno 2026-08-21):
 - TRELLIS.2: funkční přes ComfyUI-Trellis2 (sdpa + flex_gemm + nvdiffrast, bez
   flash_attn/spconv — nejsou potřeba). Texturovaný GLB ověřen.
-- SF3D: uv_unwrapper i texture_baker zkompilovány (`--no-build-isolation`);
+- SF3D: FUNKČNÍ (ověřeno 2026-08-21 po odemčení gated repa): kabuto
+  cleanplate → 20 028 faces, UV, PBR 1024² textura za **12 s** inference,
+  peak 6,2 GB — ~20× rychlejší než TRELLIS (~4 min), hrubší geometrie.
+  uv_unwrapper i texture_baker zkompilovány (`--no-build-isolation`);
   gpytoolbox a pynanoinstantmeshes na ARM64 nejdou postavit → lazy import
   patch v sf3d/models/mesh.py, quad/triangle remesh nedostupný (UGC dráha ho
-  nepotřebuje, decimace běží na NAS).
+  nepotřebuje, decimace běží na NAS). Do gen-queue zapojit jako
+  `backend: sf3d` = standalone volání (není ComfyUI node) — TODO fáze 5b.
