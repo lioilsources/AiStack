@@ -11,6 +11,7 @@ import (
 	"github.com/ol1n/AiStack/gen-queue/internal/backend"
 	"github.com/ol1n/AiStack/gen-queue/internal/queue"
 	"github.com/ol1n/AiStack/gen-queue/internal/store"
+	"github.com/ol1n/AiStack/gen-queue/internal/ugc"
 )
 
 func envOr(key, fallback string) string {
@@ -32,21 +33,21 @@ func envInt(key string, fallback int) int {
 func main() {
 	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, nil)))
 
-	nimKontextURL  := envOr("NIM_KONTEXT_URL", "http://host.docker.internal:8009/v1/infer")
-	nimSchnellURL  := envOr("NIM_SCHNELL_URL", "http://host.docker.internal:8010/v1/infer")
+	nimKontextURL := envOr("NIM_KONTEXT_URL", "http://host.docker.internal:8009/v1/infer")
+	nimSchnellURL := envOr("NIM_SCHNELL_URL", "http://host.docker.internal:8010/v1/infer")
 	kontextWorkers := envInt("NIM_KONTEXT_WORKERS", 1)
 	schnellWorkers := envInt("NIM_SCHNELL_WORKERS", 1)
-	ttlSec         := envInt("RESULT_TTL_SECONDS", 3600)
+	ttlSec := envInt("RESULT_TTL_SECONDS", 3600)
 	// Per-call NIM inference timeout. FLUX Kontext on GB10 routinely takes
 	// 110–185 s; 180 s was too tight and caused spurious timeouts + retries.
-	inferSec       := envInt("NIM_INFER_TIMEOUT_SECONDS", 300)
-	addr           := envOr("LISTEN_ADDR", ":8091")
+	inferSec := envInt("NIM_INFER_TIMEOUT_SECONDS", 300)
+	addr := envOr("LISTEN_ADDR", ":8091")
 	// Inject "disable_safety_checker":true into NIM requests to bypass the
 	// Cosmos prompt blocklist + output NSFW filter (self-hosted, own use).
 	// Requires NIM_ALLOW_UNCHECKED_GENERATION=true on the NIM containers.
-	disableSafety  := envOr("NIM_DISABLE_SAFETY_CHECKER", "true") == "true"
+	disableSafety := envOr("NIM_DISABLE_SAFETY_CHECKER", "true") == "true"
 
-	ttl          := time.Duration(ttlSec) * time.Second
+	ttl := time.Duration(ttlSec) * time.Second
 	inferTimeout := time.Duration(inferSec) * time.Second
 
 	results := store.New()
@@ -65,6 +66,17 @@ func main() {
 
 	h := api.New(kontextDisp, schnellDisp, results)
 	h.Register(mux)
+
+	// UGC tovarna: koncept -> cleanplate -> TRELLIS mesh -> push na NAS.
+	// Jeden serializovany worker (img->3D soubezne s dalsi generaci = znamy
+	// power-spike crash GB10).
+	ugcPipe := ugc.New(ugc.Config{
+		Comfy:      ugc.NewComfy(envOr("UGC_COMFY_URL", "http://host.docker.internal:8188")),
+		NAS:        ugc.NewNAS(envOr("UGC_NAS_URL", "http://192.168.88.88:8095"), envOr("UGC_SPOOL", "/spool")),
+		Checkpoint: envOr("UGC_CHECKPOINT", "Illustrious-XL-v2.0.safetensors"),
+		Timeout:    time.Duration(envInt("UGC_STAGE_TIMEOUT_SECONDS", 900)) * time.Second,
+	})
+	api.RegisterUGC(mux, ugcPipe)
 
 	slog.Info("gen-queue ready",
 		"addr", addr,
