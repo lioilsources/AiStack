@@ -14,6 +14,17 @@ ingress:
       connectTimeout: 30s
       keepAliveTimeout: 300s
 
+  # video-api — „Rozhýbat" v Ol1nLLM Image Studiu: job server nad chain.py
+  # (video-stack/serve.py, systemd video-api.service) běží na hostu :8096,
+  # stejně jako ComfyUI → host.docker.internal. Musí být před obecným
+  # llm.ol1n.com pravidlem; Go gateway nemá host bridge, proto se obchází.
+  - hostname: llm.ol1n.com
+    path: /v1/video/.*
+    service: http://host.docker.internal:8096
+    originRequest:
+      connectTimeout: 30s
+      keepAliveTimeout: 300s
+
   # llm.ol1n.com → AiStack Go gateway (LLM + OCR routing)
   - hostname: llm.ol1n.com
     service: http://gateway:8080
