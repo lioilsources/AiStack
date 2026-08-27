@@ -65,10 +65,10 @@ ingress:
       connectTimeout: 30s
       tcpKeepAlive: 30s
       keepAliveTimeout: 300s
-      # access:
-      #   required: true
-      #   teamName: ol1n
-      #   audTag:
-      #     - <AUD-tag-nové-Access-App-pro-chat.ol1n.com>
+      access:
+        required: true
+        teamName: ol1n
+        audTag:
+          - 9d11ce1989d2864e6e3fe9b142100d839e94b3c39f325f281776171881485e07
 
   - service: http_status:404
