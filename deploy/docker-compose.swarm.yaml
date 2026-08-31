@@ -6,7 +6,7 @@
 #
 # Memory budget (DGX Spark 128 GB UMA):
 #   Resident (nano + coder + rag + embed + chroma)  ~78 GB
-#   + director profile (Super-120B-NVFP4)           +60 GB → ~98 GB peak
+#   + director profile (Super-120B-NVFP4)           +84 GB (váhy ~74, viz níž)
 
 services:
 
@@ -133,9 +133,17 @@ services:
 
   # ── Tier L1: Director / Reasoner (on-demand, profile: director) ────────────
   # Nemotron-3-Super-120B-A12B-NVFP4: 120B total / 12B active, 1M context
-  # ~60 GB VRAM, AIME25 90.21%, SWE-Bench 60.47%
+  # AIME25 90.21%, SWE-Bench 60.47%
   # Requires: vllm==0.20.0, DGX Spark Blackwell architecture (NVFP4 + Marlin)
   # Activate: docker compose --profile director up -d
+  #
+  # POZOR na paměť (měřeno 31. 8. 2026): checkpoint má na disku 75 GB, takže
+  # samotné váhy sežerou ~74 GiB. `gpu-memory-utilization 0.60` = 73 GiB je
+  # tedy MÍŇ než váhy a start skončí na „no memory for KV cache" — 0.60
+  # pochází ze staršího checkpointu s ~60 GB. Reálně: sám na stroji 0.85+,
+  # vedle `translate` maximálně 0.65 s `--max-model-len 32768 --enforce-eager`
+  # (a `fallback` dole). Tahle verze vLLM navíc odmítne start, když
+  # `volná paměť < util × total`, takže director se pouští jako POSLEDNÍ.
   swarm-director:
     image: vllm/vllm-openai:${SWARM_VLLM_VERSION}
     container_name: swarm-director
