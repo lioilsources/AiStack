@@ -6,9 +6,11 @@
 #   (nebo: make up-director-night)
 #
 # Proti profilu v swarm.yaml:
-#   util 0.80        váhy samotné mají ~74 GiB, 0.60 z base profilu je MÍŇ než
-#                    ony a vLLM by skončil bez místa na KV cache; 0.80 nechá
-#                    ~21 GiB KV a ~14 GiB rezervu pro fallback + chat knihovny
+#   util 0.75        váhy samotné mají ~74 GiB, 0.60 z base profilu je MÍŇ než
+#                    ony a vLLM by skončil bez místa na KV cache. 0.80 sice
+#                    naběhne, ale stroj sedí na 114/121 GiB se swapem; 0.75
+#                    nechá ~15 GiB KV (přes 600k tokenů, bohatě dost) a místo
+#                    pro fallback i chat knihovny
 #   len 32768        obohacení posílá 2–6k tokenů, 262144 z base profilu by
 #                    sežralo KV cache bez užitku
 #   max-num-seqs 16  víc nepomáhá — měřeno 32 vláken = 6,0 chunku/min proti
@@ -19,7 +21,7 @@ services:
     command: >
       ${HF_MODEL_SWARM_DIRECTOR}
       --served-model-name swarm-director
-      --gpu-memory-utilization ${DIRECTOR_GPU_UTIL:-0.80}
+      --gpu-memory-utilization ${DIRECTOR_GPU_UTIL:-0.75}
       --max-model-len 32768
       --max-num-seqs 16
       --reasoning-parser nemotron_v3
