@@ -12,6 +12,17 @@
 #        LOKÁLNÍ cestu ke snapshotu (ne HF handle) + --tokenizer — jinak by tokenizer
 #        loader šel online a s HF_HUB_OFFLINE=1 spadl na tokenizer=None.
 # Engine: TRT staví engine při startu (~4 min) → start_period 600s.
+#
+# Paměťový profil (měřeno 31. 8. 2026, 121,7 GiB unified):
+#   výchozí (batch 16, KV 0,5)  → 57 GiB, obohacení korpusu 18,9 chunku/min
+#   úsporný (batch 8,  KV 0,2)  → ~36 GiB, 9,7/min — ale vejde se vedle ComfyUI (52 GiB)
+# Přepíná se proměnnými prostředí, ne druhým compose souborem, aby se
+# nemusel duplikovat celý příkaz trtllm-serve a nemohl zestárnout:
+#   TRANSLATE_MAX_BATCH=8 TRANSLATE_KV_FRACTION=0.2 \
+#     docker compose -f deploy/docker-compose.translate.yaml --env-file .env \
+#     up -d --force-recreate translate
+# (proměnná z shellu přebíjí --env-file). Pozor: KV frakce je podíl VOLNÉ
+# paměti při startu, takže záleží, co v tu chvíli běží.
 
 services:
 
@@ -29,10 +40,10 @@ services:
         --host 0.0.0.0
         --port 8000
         --backend pytorch
-        --max_batch_size 16
+        --max_batch_size ${TRANSLATE_MAX_BATCH:-16}
         --max_seq_len 16384
         --max_num_tokens 16384
-        --kv_cache_free_gpu_memory_fraction 0.5
+        --kv_cache_free_gpu_memory_fraction ${TRANSLATE_KV_FRACTION:-0.5}
         --kv_cache_dtype auto
         --trust_remote_code
     environment:

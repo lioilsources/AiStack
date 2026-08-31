@@ -10,7 +10,7 @@ COMPOSE_TRANSLATE := docker compose -f deploy/docker-compose.translate.yaml --en
 .PHONY: build up down logs ps \
         up-llm up-image up-ocr \
         down-llm down-image down-ocr \
-        up-translate down-translate \
+        up-translate up-translate-lean down-translate \
         up-swarm down-swarm up-swarm-director down-swarm-director \
         up-tune-image down-tune-image \
         up-dev down-dev logs-dev \
@@ -66,8 +66,13 @@ down-ocr:
 	$(COMPOSE_OCR) down
 
 ## Translate module
+# up-translate       plný profil (57 GiB) — nejrychlejší obohacení korpusu
+# up-translate-lean  úsporný (~36 GiB) — vejde se vedle ComfyUI, o 49 % pomalejší
 up-translate:
-	$(COMPOSE_TRANSLATE) up -d
+	$(COMPOSE_TRANSLATE) up -d --force-recreate translate
+
+up-translate-lean:
+	TRANSLATE_MAX_BATCH=8 TRANSLATE_KV_FRACTION=0.2 $(COMPOSE_TRANSLATE) up -d --force-recreate translate
 
 down-translate:
 	$(COMPOSE_TRANSLATE) down
