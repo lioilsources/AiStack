@@ -13,7 +13,12 @@ router_settings:
     - lab: ["dev", "swarm-coder", "translate", "fallback"]
     - dev: ["swarm-coder", "translate", "fallback"]
     - swarm-coder: ["translate", "fallback"]
-    - translate: ["fallback"]
+    # V noci jede knihovna na swarm-directorovi (obohacení korpusu) a translate
+    # je shozený, aby se do 121,7 GiB vešel. Chat tedy sáhne na directora —
+    # jeho čeština je měřitelně lepší (A/B na 30 chuncích: translate psal
+    # „staroslovanský epos" o Beowulfovi, director „anglosaský"). Teprve když
+    # neběží ani ten, přijde na řadu 4B nouzovka.
+    - translate: ["swarm-director", "fallback"]
     - swarm-director: ["fallback"]
     - shop: ["fallback"]
 
