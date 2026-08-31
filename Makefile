@@ -11,7 +11,7 @@ COMPOSE_TRANSLATE := docker compose -f deploy/docker-compose.translate.yaml --en
         up-llm up-image up-ocr \
         down-llm down-image down-ocr \
         up-translate up-translate-lean down-translate \
-        up-swarm down-swarm up-swarm-director down-swarm-director \
+        up-swarm down-swarm up-swarm-director up-director-night down-swarm-director \
         up-tune-image down-tune-image \
         up-dev down-dev logs-dev \
         up-image-schnell up-image-kontext up-image-dev down-image-nim logs-kontext \
@@ -86,6 +86,12 @@ down-swarm:
 
 up-swarm-director:
 	$(COMPOSE_SWARM) --profile director up -d swarm-director
+
+# Noční profil pro obohacení knihovního korpusu (util 0.80, len 32k) —
+# base profil s util 0.60 je míň než samotné váhy a vLLM nenaběhne.
+up-director-night:
+	docker compose -f deploy/docker-compose.swarm.yaml -f deploy/docker-compose.director-night.yaml \
+		--env-file .env --profile director up -d --no-deps swarm-director
 
 down-swarm-director:
 	$(COMPOSE_SWARM) --profile director stop swarm-director

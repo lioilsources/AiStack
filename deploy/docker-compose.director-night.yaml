@@ -1,0 +1,26 @@
+# Noční profil swarm-directora pro obohacení knihovního korpusu.
+#
+#   docker compose -f deploy/docker-compose.swarm.yaml \
+#                  -f deploy/docker-compose.director-night.yaml \
+#                  --env-file .env --profile director up -d --no-deps swarm-director
+#   (nebo: make up-director-night)
+#
+# Proti profilu v swarm.yaml:
+#   util 0.80        váhy samotné mají ~74 GiB, 0.60 z base profilu je MÍŇ než
+#                    ony a vLLM by skončil bez místa na KV cache; 0.80 nechá
+#                    ~21 GiB KV a ~14 GiB rezervu pro fallback + chat knihovny
+#   len 32768        obohacení posílá 2–6k tokenů, 262144 z base profilu by
+#                    sežralo KV cache bez užitku
+#   max-num-seqs 16  víc nepomáhá — měřeno 32 vláken = 6,0 chunku/min proti
+#                    6,7 při 16; model je nasycený šířkou pásma paměti
+
+services:
+  swarm-director:
+    command: >
+      ${HF_MODEL_SWARM_DIRECTOR}
+      --served-model-name swarm-director
+      --gpu-memory-utilization ${DIRECTOR_GPU_UTIL:-0.80}
+      --max-model-len 32768
+      --max-num-seqs 16
+      --reasoning-parser nemotron_v3
+      --trust-remote-code
