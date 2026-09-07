@@ -89,6 +89,7 @@ services:
     environment:
       - LITELLM_URL=http://litellm:4000
       - OCR_API_URL=http://ocr-api:8000
+      - AUDIO_API_URL=http://audio:8093
       - CONTROLLER_URL=http://controller:8090
     networks:
       - internal

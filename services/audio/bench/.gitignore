@@ -1,0 +1,4 @@
+# Výstupy benchmarků a smoke testů — audio a časy se necommitují.
+*
+!.gitignore
+!timings.csv.example

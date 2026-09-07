@@ -1,0 +1,81 @@
+# =============================================================================
+# audio-sfx — MOSS-SoundEffect v2.0 + Stable Audio Open na GB10 (sm_121)
+# =============================================================================
+#
+# Ani jeden z modelů neveze server, takže image nese vlastní wrapper
+# (runtime/sfx_server.py). Oba modely žijí v jednom image, protože oba stojí
+# na torch + diffusers + transformers a rozdělit je by znamenalo dvakrát
+# stejných ~8 GB závislostí.
+#
+# Build (na SPARKu):
+#   docker build -f runtime/Dockerfile.sfx -t aistack/audio-sfx:latest .
+#
+# =============================================================================
+
+ARG CUDA_TAG=13.0.1-runtime-ubuntu24.04
+FROM nvidia/cuda:${CUDA_TAG}
+
+ENV DEBIAN_FRONTEND=noninteractive \
+    LANG=C.UTF-8 \
+    PYTHONUNBUFFERED=1
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        git curl ca-certificates build-essential \
+        python3.12 python3.12-dev python3.12-venv \
+        libsndfile1 ffmpeg \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN python3.12 -m venv /opt/venv
+ENV PATH=/opt/venv/bin:$PATH
+RUN pip install --no-cache-dir --upgrade pip setuptools wheel
+
+# cu130 aarch64 — jediná varianta torch, která má na sm_121 kernely.
+RUN pip install --no-cache-dir \
+        --extra-index-url https://download.pytorch.org/whl/cu130 \
+        torch==2.10.0+cu130 torchaudio==2.10.0+cu130
+
+# ==================== CUDA knihovny: pip před systémem ====================
+# Base image veze CUDA 13.0.2 v /usr/local/cuda a torch wheel svoje vlastní
+# knihovny v site-packages/nvidia. Bez tohohle vyhraje ldconfig a torch si
+# natáhne systémový libcublas — na GB10 pak i `torch.randn(64,64,device="cuda") @ …`
+# skončí na `CUBLAS_STATUS_INVALID_VALUE`. Není to chyba modelu ani sm_121:
+# se správnou knihovnou tentýž matmul projde. LD_LIBRARY_PATH je jediná páka,
+# která přebije ldconfig cache.
+ENV NV_PIP_LIBS=/opt/venv/lib/python3.12/site-packages/nvidia
+ENV LD_LIBRARY_PATH=${NV_PIP_LIBS}/cu13/lib:${NV_PIP_LIBS}/cudnn/lib:${NV_PIP_LIBS}/nccl/lib:${NV_PIP_LIBS}/cusparselt/lib:${LD_LIBRARY_PATH}
+RUN test -f "${NV_PIP_LIBS}/cu13/lib/libcublas.so.13" \
+    || (echo "CHYBA: torch nenainstaloval nvidia/cu13 knihovny — zkontroluj index cu130" && exit 1)
+
+COPY runtime/requirements.sfx.txt runtime/constraints.sfx.txt /tmp/
+RUN pip install --no-cache-dir -c /tmp/constraints.sfx.txt -r /tmp/requirements.sfx.txt \
+    && python3 -c "import torch; assert torch.__version__.startswith('2.10'), torch.__version__"
+
+# MOSS-SoundEffect je jen na GitHubu a nemá vlastní server.
+# --no-deps: jeho pyproject veze gradio 6 (démo, nepotřebujeme) a v extra
+# `torch-cu128` pin na CUDA 12.8, který na sm_121 nemá kernely. Runtime piny
+# jsou proto vypsané v requirements.sfx.txt.
+ARG MOSS_REF=main
+RUN git clone --depth 1 --branch "${MOSS_REF}" https://github.com/OpenMOSS/MOSS-TTS.git /opt/moss-tts \
+    && pip install --no-cache-dir --no-deps -e /opt/moss-tts/moss_soundeffect_v2 \
+    && python3 -c "import moss_soundeffect_v2; print('moss OK')"
+
+COPY runtime/sfx_server.py /srv/sfx_server.py
+WORKDIR /srv
+
+ENV SFX_MODELS_DIR=/models \
+    SFX_DEFAULT_MODEL=moss-soundeffect-v2 \
+    SFX_DEFAULT_STEPS=100 \
+    SFX_PORT=8002 \
+    HF_HUB_OFFLINE=1 \
+    TOKENIZERS_PARALLELISM=false
+# MOSS obaluje DiT torch.compile + Triton CUDA Graph. Na GB10 to ověřeně
+# funguje a je to skoro dvakrát rychlejší (30 kroků: 12,5 s bez compile,
+# 6,7 s s ním); první volání po startu zaplatí ~60 s překladem. Když by se
+# Triton na jiné konfiguraci rozbil, stačí TORCHDYNAMO_DISABLE=1.
+ENV TORCHDYNAMO_DISABLE=0
+
+EXPOSE 8002
+HEALTHCHECK --interval=30s --timeout=10s --retries=3 --start-period=120s \
+    CMD curl -sf http://localhost:8002/health || exit 1
+
+CMD ["python3", "sfx_server.py"]
