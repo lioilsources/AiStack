@@ -1,0 +1,24 @@
+# Závislosti kontejneru audio-sfx.
+#
+# Verze kopírují piny z MOSS-TTS/moss_soundeffect_v2/pyproject.toml, protože
+# samotný balík se instaluje s --no-deps (jinak by si přitáhl gradio 6 a torch
+# z cu128 indexu, který na sm_121 nemá kernely). Když se piny rozejdou, MOSS
+# spadne až za běhu na importu — proto tu jsou explicitně.
+numpy==1.26.4
+einops==0.8.2
+safetensors==0.7.0
+transformers==4.57.1
+diffusers==0.37.1
+soundfile==0.13.1
+ftfy==6.3.1
+regex==2026.4.4
+tqdm==4.67.3
+pillow==12.2.0
+imageio==2.37.3
+descript-audiotools==0.7.2
+accelerate==1.13.0
+
+# Wrapper.
+fastapi==0.118.0
+uvicorn[standard]==0.37.0
+pydantic==2.11.7

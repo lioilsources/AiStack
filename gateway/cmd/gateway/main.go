@@ -109,11 +109,13 @@ func main() {
 
 	litellmURL := envOr("LITELLM_URL", "http://litellm:4000")
 	ocrAPIURL := envOr("OCR_API_URL", "http://ocr-api:8003")
+	audioAPIURL := envOr("AUDIO_API_URL", "http://audio:8093")
 	controllerURL := envOr("CONTROLLER_URL", "http://controller:8090")
 	addr := envOr("LISTEN_ADDR", ":8080")
 
 	llmProxy := newProxy(litellmURL)
 	ocrProxy := newProxy(ocrAPIURL)
+	audioProxy := newProxy(audioAPIURL)
 	controllerProxy := newProxy(controllerURL)
 
 	mux := http.NewServeMux()
@@ -136,6 +138,15 @@ func main() {
 	mux.Handle("/v1/ocr", ocrProxy)
 	mux.Handle("/v1/ocr/", ocrProxy)
 
+	// Audio — hudba a SFX generované lokálně (ACE-Step / MOSS-SoundEffect).
+	mux.Handle("/v1/audio", audioProxy)
+	mux.Handle("/v1/audio/", audioProxy)
+
+	// ElevenLabs-kompatibilní shim. Klient přepne base URL a jinak nemění nic;
+	// existuje jen pro přechodové období, nový kód má mířit na /v1/audio/*.
+	mux.Handle("/v1/sound-generation", audioProxy)
+	mux.Handle("/v1/music/", audioProxy)
+
 	// LLM — OpenAI-compatible: /v1/chat/completions, /v1/completions, /v1/models, …
 	mux.Handle("/v1/", llmProxy)
 	mux.Handle("/", llmProxy)
@@ -152,6 +163,7 @@ func main() {
 		"addr", addr,
 		"llm", litellmURL,
 		"ocr", ocrAPIURL,
+		"audio", audioAPIURL,
 		"controller", controllerURL,
 	)
 

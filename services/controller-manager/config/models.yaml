@@ -43,3 +43,20 @@ models:
     compose_file: /home/ol1n/deploy/AiStack/deploy/docker-compose.ocr.yaml
     health_url: http://ocr-api:8003/health
     alias: ocr
+
+  # Audio — hudba (ACE-Step 1.5) a SFX (MOSS-SoundEffect / Stable Audio Open).
+  # Orchestrátor `audio` se nespravuje: nemá váhy, drží frontu a musí přežít
+  # shození modelů. Řídí se jen kontejnery s modely.
+  audio-music:
+    compose_file: /home/ol1n/deploy/AiStack/deploy/docker-compose.audio.yaml
+    services: [audio-music]
+    health_url: http://audio-music:8001/health
+    health_timeout: 900s
+    alias: audio-music
+
+  audio-sfx:
+    compose_file: /home/ol1n/deploy/AiStack/deploy/docker-compose.audio.yaml
+    services: [audio-sfx]
+    health_url: http://audio-sfx:8002/health
+    health_timeout: 600s
+    alias: audio-sfx

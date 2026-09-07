@@ -1,0 +1,5 @@
+model,kind,prompt_id,target_s,wall_s,audio_s,lufs,true_peak_db,bytes,seed,error
+acestep-v15-turbo,music,chiptune_boss,30.0,41.20,28.00,-16.02,-1.03,412880,42,
+acestep-v15-turbo,music,arcade_synthwave,30.0,39.80,28.00,-15.94,-1.01,401220,42,
+moss-soundeffect-v2,sfx,fire_bullet,0.5,3.10,0.48,-18.05,-1.00,7420,42,
+moss-soundeffect-v2,sfx,explosion_large,1.2,4.40,1.19,-17.92,-1.02,18860,42,
