@@ -1,0 +1,5 @@
+# torch je jediná věc, kterou nesmí žádná tranzitivní závislost přepsat:
+# jen cu130 aarch64 build má kernely pro sm_121. descript-audiotools na torch
+# závisí bez pinu, takže by jinak bez varování stáhl x86 wheel z PyPI.
+torch==2.10.0+cu130
+torchaudio==2.10.0+cu130

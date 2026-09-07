@@ -1,0 +1,131 @@
+# =============================================================================
+# Audio — generování hudby a SFX open-source modely (náhrada ElevenLabs)
+# =============================================================================
+#
+#   audio        orchestrátor (fronta, ffmpeg post-proc, SQLite)  :8093
+#   audio-music  ACE-Step 1.5 REST API                            :8094 → 8001
+#   audio-sfx    MOSS-SoundEffect / Stable Audio Open wrapper      :8095 → 8002
+#
+# Modelové kontejnery drží GPU paměť, orchestrátor ne — proto jsou oddělené:
+# controller je smí shodit (`/ctrl/deactivate?model=audio-music`), aniž by
+# služba přestala odpovídat a přišla o rozdělané joby.
+#
+#   make up-audio          celý audio stack
+#   make up-audio-music    jen hudba
+#   make up-audio-sfx      jen SFX
+# =============================================================================
+
+services:
+
+  audio:
+    build:
+      context: ../services/audio
+    image: aistack/audio:latest
+    container_name: ai-audio
+    restart: unless-stopped
+    environment:
+      - LISTEN_ADDR=0.0.0.0:8093
+      - AUDIO_DATA_DIR=/data/audio
+      - AUDIO_DB_PATH=/data/audio/jobs.db
+      - AUDIO_MUSIC_URL=${AUDIO_MUSIC_URL:-http://audio-music:8001}
+      - AUDIO_SFX_URL=${AUDIO_SFX_URL:-http://audio-sfx:8002}
+      - AUDIO_MUSIC_MODEL=${AUDIO_MUSIC_MODEL:-acestep-v15-turbo}
+      - AUDIO_SFX_MODEL=${AUDIO_SFX_MODEL:-moss-soundeffect-v2}
+      - AUDIO_MUSIC_TIMEOUT_S=${AUDIO_MUSIC_TIMEOUT_S:-900}
+      - AUDIO_SFX_TIMEOUT_S=${AUDIO_SFX_TIMEOUT_S:-300}
+      - AUDIO_MUSIC_LUFS=${AUDIO_MUSIC_LUFS:--16}
+      - AUDIO_SFX_LUFS=${AUDIO_SFX_LUFS:--18}
+      - AUDIO_TRUE_PEAK_DB=${AUDIO_TRUE_PEAK_DB:--1}
+      - AUDIO_OGG_QUALITY=${AUDIO_OGG_QUALITY:-6}
+      - AUDIO_API_KEY=${AUDIO_API_KEY:-}
+    volumes:
+      - ${AUDIO_DATA_PATH:-/home/ol1n/dev/audio/data}:/data/audio
+    ports:
+      - "8093:8093"   # LAN: Kirian pipeline generuje assety z Macu
+    networks:
+      - internal
+
+  # ─────────────────────────────────────────────
+  # ACE-Step 1.5 — hudba. MIT licence, komerční užití výstupů povoleno.
+  # ─────────────────────────────────────────────
+  audio-music:
+    build:
+      context: ../services/audio
+      dockerfile: runtime/Dockerfile.acestep
+    image: aistack/audio-music:latest
+    container_name: audio-music
+    restart: unless-stopped
+    environment:
+      # Váhy jsou na /app/checkpoints, ne na vlastní cestě přes
+      # ACESTEP_CHECKPOINTS_DIR: ne všechny cesty v ACE-Stepu tu proměnnou
+      # čtou. S vahami na /models/… si init stáhl 10 GB znovu do
+      # /app/checkpoints — z ModelScope, 300 kB/s. Mount na default je jediné
+      # místo, kam sáhne každá větev.
+      - ACESTEP_CHECKPOINTS_DIR=/app/checkpoints
+      - ACESTEP_DOWNLOAD_SOURCE=huggingface
+      - ACESTEP_CONFIG_PATH=${ACESTEP_CONFIG_PATH:-acestep-v15-turbo}
+      - ACESTEP_LM_MODEL_PATH=${ACESTEP_LM_MODEL_PATH:-acestep-5Hz-lm-1.7B}
+      - ACESTEP_API_HOST=0.0.0.0
+      - ACESTEP_API_PORT=8001
+      # U ACE-Stepu compile zatím ověřený není; hudba je i tak rychlá
+      # (30s stopa za 12–14 s).
+      - TORCHDYNAMO_DISABLE=${AUDIO_MUSIC_TORCHDYNAMO_DISABLE:-1}
+    volumes:
+      # Zapisovatelně. ACE-Step si při startu porovná .py soubory v adresáři
+      # s vahami proti kódu v repu a při neshodě je přepíše
+      # (model_downloader._sync_model_code_files) — pod :ro mountem na tom
+      # spadne inicializace, ne generace, takže by to vypadalo jako rozbitý
+      # model.
+      - ${AUDIO_MODELS_PATH:-/home/ol1n/dev/audio/models}/ace-step-1.5:/app/checkpoints
+    ports:
+      - "127.0.0.1:8094:8001"
+    shm_size: "2gb"
+    networks:
+      - internal
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+  # ─────────────────────────────────────────────
+  # SFX — MOSS-SoundEffect v2.0 (Apache-2.0) nebo Stable Audio Open
+  # (Stability Community, komerčně do 1 M USD obratu).
+  # ─────────────────────────────────────────────
+  audio-sfx:
+    build:
+      context: ../services/audio
+      dockerfile: runtime/Dockerfile.sfx
+    image: aistack/audio-sfx:latest
+    container_name: audio-sfx
+    restart: unless-stopped
+    environment:
+      - SFX_MODELS_DIR=/models
+      - SFX_DEFAULT_MODEL=${AUDIO_SFX_MODEL:-moss-soundeffect-v2}
+      - SFX_PORT=8002
+      - SFX_PRELOAD=${AUDIO_SFX_PRELOAD:-false}
+      - SFX_IDLE_UNLOAD_S=${AUDIO_SFX_IDLE_UNLOAD_S:-900}
+      - SFX_DEFAULT_STEPS=${AUDIO_SFX_STEPS:-100}
+      # Ověřeno na GB10: torch.compile tu jede a je skoro 2× rychlejší.
+      - TORCHDYNAMO_DISABLE=${AUDIO_SFX_TORCHDYNAMO_DISABLE:-0}
+    volumes:
+      - ${AUDIO_MODELS_PATH:-/home/ol1n/dev/audio/models}:/models:ro
+    ports:
+      - "127.0.0.1:8095:8002"
+    shm_size: "2gb"
+    networks:
+      - internal
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+networks:
+  internal:
+    external: true
+    name: ai
