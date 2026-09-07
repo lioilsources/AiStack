@@ -6,6 +6,7 @@ COMPOSE_OCR   := docker compose -f deploy/docker-compose.ocr.yaml --env-file .en
 COMPOSE_SWARM := docker compose -f deploy/docker-compose.swarm.yaml --env-file .env
 COMPOSE_TUNE      := docker compose -f deploy/docker-compose.tune-image.yaml --env-file .env
 COMPOSE_TRANSLATE := docker compose -f deploy/docker-compose.translate.yaml --env-file .env
+COMPOSE_AUDIO     := docker compose -f deploy/docker-compose.audio.yaml --env-file .env
 
 .PHONY: build up down logs ps \
         up-llm up-image up-ocr \
@@ -18,6 +19,8 @@ COMPOSE_TRANSLATE := docker compose -f deploy/docker-compose.translate.yaml --en
         download-flux download-flux-lora download-qwen-vl \
         download-nemotron download-nemotron-coder download-ocr-models \
         download-scout \
+        up-audio up-audio-music up-audio-sfx down-audio logs-audio \
+        build-audio download-audio bench-audio \
         gateway-build gateway-run
 
 ## Full stack
@@ -35,6 +38,35 @@ logs:
 
 ps:
 	$(COMPOSE) ps
+
+## Audio — hudba (ACE-Step 1.5) + SFX (MOSS-SoundEffect / Stable Audio Open)
+## Orchestrátor `audio` je lehký a může běžet pořád; modely žerou GPU paměť,
+## takže se zvedají zvlášť a controller je smí shodit.
+up-audio:
+	$(COMPOSE_AUDIO) up -d
+
+up-audio-music:
+	$(COMPOSE_AUDIO) up -d audio audio-music
+
+up-audio-sfx:
+	$(COMPOSE_AUDIO) up -d audio audio-sfx
+
+down-audio:
+	$(COMPOSE_AUDIO) down
+
+logs-audio:
+	$(COMPOSE_AUDIO) logs -f audio
+
+build-audio:
+	$(COMPOSE_AUDIO) build
+
+## Stažení audio modelů (~30 GB) do $$AUDIO_MODELS_PATH
+download-audio:
+	services/audio/scripts/download.sh
+
+## Benchmark hudby i SFX → services/audio/bench/timings.csv
+bench-audio:
+	python3 services/audio/scripts/bench.py
 
 ## dev NIM container
 up-dev:

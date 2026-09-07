@@ -30,10 +30,15 @@ deploy/                       compose soubory, litellm konfigurace, reasoning pa
   parsers/                    custom reasoning parsery (nano_v3, nemotron_v3)
 
 services/
+  audio/                      Python: hudba + SFX (fronta, ffmpeg post-proc, SQLite)
+    runtime/                  image modelových kontejnerů pro GB10 (ACE-Step, MOSS)
+    scripts/                  download.sh, smoke_*, bench.py
   controller-manager/         Go: dynamic model switching přes docker.sock
     config/models.yaml        registr spravovaných stacků
   gen-queue/                  Go: async job queue pro FLUX NIM (cloudflared /nim/* → :8091)
   image-api/                  Python: FLUX.1-dev + Qwen image edit
+
+pkg/audioclient/              Go klient audio API (používá ho Kirian pipeline)
 
 cache/
   models/ngc/                 fyzická data NIM kontejnerů  (/opt/nim/.cache mount)
@@ -86,6 +91,25 @@ Kontejnery `flux-schnell` / `flux-kontext` (NIM) se spouští přes
 `docker-compose.image-nim.yaml` (`make up-image-schnell` / `up-image-kontext`).
 Tok requestu sleduj přes `make logs-kontext` (`[cf]` → `[queue]` → `[nim]`).
 
+## Audio generation — services/audio (`/v1/audio/*`)
+
+Nahrazuje ElevenLabs pro Kirian. Tři kontejnery: lehký orchestrátor `audio`
+(:8093, fronta + ffmpeg post-processing + SQLite) a dva modelové runtime
+`audio-music` (ACE-Step 1.5, MIT) a `audio-sfx` (MOSS-SoundEffect v2.0,
+Apache-2.0). Modely se zvedají a shazují přes controller
+(`/ctrl/activate?model=audio-music`), orchestrátor běží pořád.
+
+- `POST /v1/audio/music` / `/v1/audio/sfx` → `202 {job_id}`
+- `GET  /v1/audio/jobs/{id}` → stav + výstupy (délka, LUFS, seed, sha256)
+- `GET  /v1/audio/models` → katalog **včetně licencí** — Kirian jde na Steam,
+  takže model bez komerční licence se do produkce nesmí dostat
+- ElevenLabs shim `POST /v1/sound-generation`, `POST /v1/music/compose`
+  (blokující, vrací audio) — jen pro přechodové období
+
+Váhy leží mimo repo v `$AUDIO_MODELS_PATH` (default `/home/ol1n/dev/audio/models`),
+ne v `/opt/audio` jak říkal plán — na SPARKu není passwordless sudo.
+Detaily: `services/audio/README.md`, licence `services/audio/LICENSES.md`.
+
 ## Porty (vše `127.0.0.1` pokud není uvedeno)
 
 | port | kontejner | poznámka |
@@ -95,6 +119,9 @@ Tok requestu sleduj přes `make logs-kontext` (`[cf]` → `[queue]` → `[nim]`)
 | 8003 | ocr-api | NIM |
 | 8004 | translate | NIM |
 | 8091 | gen-queue | Go async job queue (FLUX NIM), interní — cloudflared /nim/* |
+| 8093 | audio | `0.0.0.0` — orchestrátor hudby a SFX, přes gateway `/v1/audio/*` |
+| 8094 | audio-music | ACE-Step 1.5 REST API (interní) |
+| 8095 | audio-sfx | MOSS-SoundEffect / Stable Audio Open wrapper (interní) |
 | 8005 | swarm-embed | vLLM, profile: embed |
 | 8010 | swarm-nano | vLLM |
 | 8011 | swarm-coder | vLLM (NGC image) |
@@ -112,6 +139,9 @@ Tok requestu sleduj přes `make logs-kontext` (`[cf]` → `[queue]` → `[nim]`)
 ## Důležitá varování
 
 - **`--kv-cache-dtype fp8` nefunguje na GB10/Blackwell** — generuje tokenový šum. Nepoužívat.
+- **`acrossfade`/`amix` nad `asplit` v jednom ffmpeg filtergraphu tiše zahodí prolnutí** —
+  concat čte segmenty popořadě a větev s ocasem nikdy nedostane data. Bez chybové
+  hlášky, jen kratší výstup. `services/audio` proto skládá smyčku přes dočasné soubory.
 - **`huggingface-cli download` je deprecated** — v download skriptech používat `hf download`.
 - `HF_HUB_OFFLINE=1` ve vLLM kontejnerech: model musí být stažen před startem, jinak selže.
 - `make up-tune-image` **stopne `dev`** pro uvolnění paměti — `make up-llm` ho vrátí zpět.

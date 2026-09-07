@@ -1,0 +1,84 @@
+# =============================================================================
+# audio-music — ACE-Step 1.5 na DGX Spark (GB10, aarch64, CUDA 13, sm_121)
+# =============================================================================
+#
+# Upstream veze Dockerfile pro x86_64 (CUDA 12.8) a Dockerfile.jetson
+# (JetPack 6, CUDA 12.6). Ani jeden na GB10 nesedí: sm_121 potřebuje CUDA 13.
+# Tenhle soubor je třetí varianta a je jednodušší než obě — pyproject.toml
+# upstreamu už má pro `platform_machine == 'aarch64'` marker na torch 2.10.0+cu130
+# (komentář v něm doslova říká „e.g. NVIDIA DGX Spark"), takže stačí nechat
+# pracovat uv a nic ručně nepřekládat.
+#
+# Build (na SPARKu, ne na Macu — image je aarch64):
+#   docker build -f runtime/Dockerfile.acestep -t aistack/audio-music:latest .
+#
+# =============================================================================
+
+ARG CUDA_TAG=13.0.1-runtime-ubuntu24.04
+FROM nvidia/cuda:${CUDA_TAG}
+
+ENV DEBIAN_FRONTEND=noninteractive \
+    LANG=C.UTF-8 \
+    PYTHONUNBUFFERED=1
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        git curl ca-certificates build-essential \
+        python3.12 python3.12-dev python3.12-venv \
+        libsndfile1 ffmpeg \
+    && rm -rf /var/lib/apt/lists/* \
+    && ln -sf /usr/bin/python3.12 /usr/local/bin/python3
+
+# uv řeší dvě věci, které pip sám neumí: `[tool.uv.sources]` mapuje torch na
+# index cu130 podle platformy, a nano-vllm bere z cesty v repu (na PyPI není).
+COPY --from=ghcr.io/astral-sh/uv:0.9.7 /uv /usr/local/bin/uv
+
+ARG ACESTEP_REF=main
+WORKDIR /app
+RUN git clone https://github.com/ace-step/ACE-Step-1.5.git /app \
+    && git checkout "${ACESTEP_REF}" \
+    && git rev-parse HEAD > /app/.acestep-commit
+
+ENV UV_PROJECT_ENVIRONMENT=/opt/venv \
+    UV_LINK_MODE=copy \
+    UV_PYTHON=/usr/bin/python3.12
+RUN uv sync --no-dev --no-editable \
+    || uv sync --no-dev --no-editable --no-cache
+ENV PATH=/opt/venv/bin:$PATH
+
+# ==================== CUDA knihovny: pip před systémem ====================
+# Base image veze CUDA 13.0.2 v /usr/local/cuda a torch wheel svoje vlastní
+# knihovny v site-packages/nvidia. Bez tohohle vyhraje ldconfig a torch si
+# natáhne systémový libcublas — na GB10 pak i `torch.randn(64,64,device="cuda") @ …`
+# skončí na `CUBLAS_STATUS_INVALID_VALUE`. Není to chyba modelu ani sm_121:
+# se správnou knihovnou tentýž matmul projde. LD_LIBRARY_PATH je jediná páka,
+# která přebije ldconfig cache.
+ENV NV_PIP_LIBS=/opt/venv/lib/python3.12/site-packages/nvidia
+ENV LD_LIBRARY_PATH=${NV_PIP_LIBS}/cu13/lib:${NV_PIP_LIBS}/cudnn/lib:${NV_PIP_LIBS}/nccl/lib:${NV_PIP_LIBS}/cusparselt/lib:${LD_LIBRARY_PATH}
+RUN test -f "${NV_PIP_LIBS}/cu13/lib/libcublas.so.13" \
+    || (echo "CHYBA: torch nenainstaloval nvidia/cu13 knihovny — zkontroluj index cu130" && exit 1)
+
+RUN python3 -c "import torch; print('torch', torch.__version__, 'archs', torch.cuda.get_arch_list())" \
+    || echo "POZOR: import torch při buildu selhal (bez GPU je to očekávané) — ověř až za běhu"
+
+# Váhy se mountují zvenčí, ne pečou do image (10 GB) — a musí přijít na
+# /app/checkpoints. ACESTEP_CHECKPOINTS_DIR sice existuje, ale ne každá větev
+# inicializace ji čte; s vahami jinde si server stáhl 10 GB znovu z ModelScope
+# rychlostí 300 kB/s, aniž by cokoli ohlásil jako chybu.
+ENV ACESTEP_PROJECT_ROOT=/app \
+    ACESTEP_CHECKPOINTS_DIR=/app/checkpoints \
+    ACESTEP_DOWNLOAD_SOURCE=huggingface \
+    ACESTEP_CONFIG_PATH=acestep-v15-turbo \
+    ACESTEP_LM_MODEL_PATH=acestep-5Hz-lm-1.7B \
+    ACESTEP_API_HOST=0.0.0.0 \
+    ACESTEP_API_PORT=8001 \
+    HF_HUB_OFFLINE=1 \
+    TOKENIZERS_PARALLELISM=false
+# Triton na sm_121 zatím není ověřený. TORCHDYNAMO_DISABLE=1 vypne compile
+# cestu; až se ověří, že jede, stačí ho v compose přepnout na 0.
+ENV TORCHDYNAMO_DISABLE=1
+
+EXPOSE 8001
+HEALTHCHECK --interval=30s --timeout=10s --retries=3 --start-period=600s \
+    CMD curl -sf http://localhost:8001/health || exit 1
+
+CMD ["python3", "-m", "acestep.api_server"]
