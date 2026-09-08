@@ -15,6 +15,14 @@
 #                    sežralo KV cache bez užitku
 #   max-num-seqs 16  víc nepomáhá — měřeno 32 vláken = 6,0 chunku/min proti
 #                    6,7 při 16; model je nasycený šířkou pásma paměti
+#   PIECEWISE        výchozí FULL_AND_PIECEWISE (FULL CUDA grafy pro dekódování)
+#                    na GB10 u tohoto hybridního Mamba/MoE modelu kazí ~0,4 %
+#                    tokenů (3.–8. 9. 2026: smyčky „Суди…", EOS uprostřed věty,
+#                    obohacení 0–10 % úspěšnosti, krátký smoke test přitom projde).
+#                    Sonda WorldLibraryProject/rag/probe_llm.py: FULL ~6/18
+#                    čistých, PIECEWISE 18/18 a o ~35 % rychlejší než
+#                    --enforce-eager (taky 18/18). FP8 KV z checkpointu
+#                    (hf_quant_config kv_cache_quant_algo) s PIECEWISE nevadí.
 
 services:
   swarm-director:
@@ -25,4 +33,5 @@ services:
       --max-model-len 32768
       --max-num-seqs 16
       --reasoning-parser nemotron_v3
+      --compilation-config '{"cudagraph_mode": "PIECEWISE"}'
       --trust-remote-code

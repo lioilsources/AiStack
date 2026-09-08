@@ -36,6 +36,7 @@ Po editaci `litellm_config.yaml` stačí restart gatewaye, ne celého stacku:
 - **Model swap = přepsat symlink `cache/{role}` + `HF_MODEL_{ROLE}` v `.env`.** Compose ani CLAUDE.md se nemění.
 - **NIM kontejnery NIKDY nesdílejí cache dir** (kompilované engine artefakty). HF/vLLM se stejným modelem cache sdílet **mohou** (s `HF_HUB_OFFLINE=1` jen čtou).
 - **`--kv-cache-dtype fp8` NEFUNGUJE na GB10/Blackwell** — tokenový šum. Nepoužívat.
+- **FULL CUDA grafy (výchozí `cudagraph_mode=FULL_AND_PIECEWISE`) kazí tokeny na GB10** u hybridních Mamba/MoE modelů (Nemotron-3-Super, 3.–8. 9. 2026: smyčky „Суди…", EOS uprostřed věty; krátký smoke test projde). vLLM pouštět s `--compilation-config '{"cudagraph_mode": "PIECEWISE"}'` a po každé změně directora ověřit `WorldLibraryProject/rag/probe_llm.py` (musí být 18/18).
 - **`huggingface-cli download` je deprecated** → `hf download`.
 - **vLLM s `HF_HUB_OFFLINE=1`** — model musí být stažený **před** startem, jinak kontejner spadne.
 - **Síť `ai`** (external) — vytváří ji jen `docker-compose.yml`, ostatní compose ji přebírají.
