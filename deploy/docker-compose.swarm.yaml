@@ -144,6 +144,8 @@ services:
   # vedle `translate` maximálně 0.65 s `--max-model-len 32768 --enforce-eager`
   # (a `fallback` dole). Tahle verze vLLM navíc odmítne start, když
   # `volná paměť < util × total`, takže director se pouští jako POSLEDNÍ.
+  # cudagraph_mode=PIECEWISE: FULL CUDA grafy pro dekódování na GB10 kazí
+  # tokeny (3.–8. 9. 2026, viz docker-compose.director-night.yaml).
   swarm-director:
     image: vllm/vllm-openai:${SWARM_VLLM_VERSION}
     container_name: swarm-director
@@ -158,6 +160,7 @@ services:
       --reasoning-parser nemotron_v3
       --enable-auto-tool-choice
       --tool-call-parser qwen3_coder
+      --compilation-config '{"cudagraph_mode": "PIECEWISE"}'
       --trust-remote-code
     environment:
       - HF_TOKEN=${HF_TOKEN}
