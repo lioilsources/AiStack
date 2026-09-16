@@ -1,0 +1,37 @@
+# Noční profil swarm-directora pro obohacení knihovního korpusu.
+#
+#   docker compose -f deploy/docker-compose.swarm.yaml \
+#                  -f deploy/docker-compose.director-night.yaml \
+#                  --env-file .env --profile director up -d --no-deps swarm-director
+#   (nebo: make up-director-night)
+#
+# Proti profilu v swarm.yaml:
+#   util 0.75        váhy samotné mají ~74 GiB, 0.60 z base profilu je MÍŇ než
+#                    ony a vLLM by skončil bez místa na KV cache. 0.80 sice
+#                    naběhne, ale stroj sedí na 114/121 GiB se swapem; 0.75
+#                    nechá ~15 GiB KV (přes 600k tokenů, bohatě dost) a místo
+#                    pro fallback i chat knihovny
+#   len 32768        obohacení posílá 2–6k tokenů, 262144 z base profilu by
+#                    sežralo KV cache bez užitku
+#   max-num-seqs 16  víc nepomáhá — měřeno 32 vláken = 6,0 chunku/min proti
+#                    6,7 při 16; model je nasycený šířkou pásma paměti
+#   PIECEWISE        výchozí FULL_AND_PIECEWISE (FULL CUDA grafy pro dekódování)
+#                    na GB10 u tohoto hybridního Mamba/MoE modelu kazí ~0,4 %
+#                    tokenů (3.–8. 9. 2026: smyčky „Суди…", EOS uprostřed věty,
+#                    obohacení 0–10 % úspěšnosti, krátký smoke test přitom projde).
+#                    Sonda WorldLibraryProject/rag/probe_llm.py: FULL ~6/18
+#                    čistých, PIECEWISE 18/18 a o ~35 % rychlejší než
+#                    --enforce-eager (taky 18/18). FP8 KV z checkpointu
+#                    (hf_quant_config kv_cache_quant_algo) s PIECEWISE nevadí.
+
+services:
+  swarm-director:
+    command: >
+      ${HF_MODEL_SWARM_DIRECTOR}
+      --served-model-name swarm-director
+      --gpu-memory-utilization ${DIRECTOR_GPU_UTIL:-0.75}
+      --max-model-len 32768
+      --max-num-seqs 16
+      --reasoning-parser nemotron_v3
+      --compilation-config '{"cudagraph_mode": "PIECEWISE"}'
+      --trust-remote-code
