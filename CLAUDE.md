@@ -117,9 +117,18 @@ Detaily: `services/audio/README.md`, licence `services/audio/LICENSES.md`.
 jako `openclaw-default`. OpenClaw gateway běží na hostu a volá `http://127.0.0.1:8080/v1`
 (gateway → litellm), protože litellm:4000 není na host publikovaný.
 
-- **Rezidentní, mimo controller** — `/activate` shazuje předchozí model, agent musí běžet pořád.
+- **Rezidentní, mimo controller** — `/activate` shazuje předchozí model, agent
+  si ale svoje okno drží sám (níž), takže ho controller nepřepíná.
 - Tool calls `--tool-call-parser qwen3_xml` (ne hermes); thinking vypíná LiteLLM route.
-- ~36 GB unified paměti (`AGENT_GPU_MEMORY_UTILIZATION=0.30`) — před `make up-agent` ověř `free -g`.
+- ~36 GB unified paměti (`AGENT_GPU_MEMORY_UTILIZATION=0.30`) — vLLM si je
+  zabere při startu bez ohledu na zátěž a pod `util × total` volných odmítne
+  nastartovat úplně.
+- **Běží jen v okně promo 00–01**, jinak ho `rag-schedule.sh`
+  (WorldLibraryProject, `AGENT_CONTAINERS`) zastaví. 121,7 GiB neuveze dva
+  velké modely: vedle directora (0.75 = 91 GiB) ani vedle ComfyUI (52 GiB) se
+  nevejde. Když v tom seznamu chyběl (11.–16. 9. 2026), director dvě noci po
+  sobě nenaběhl a ComfyUI přes den počítalo na CPU. `restart: unless-stopped`
+  je schválně: ruční `docker stop` vydrží, restart stroje ne.
 - `make download-agent` → `make up-agent` → `curl localhost:8040/v1/models`.
 
 ## Porty (vše `127.0.0.1` pokud není uvedeno)
