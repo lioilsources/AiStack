@@ -7,6 +7,7 @@ COMPOSE_SWARM := docker compose -f deploy/docker-compose.swarm.yaml --env-file .
 COMPOSE_TUNE      := docker compose -f deploy/docker-compose.tune-image.yaml --env-file .env
 COMPOSE_TRANSLATE := docker compose -f deploy/docker-compose.translate.yaml --env-file .env
 COMPOSE_AUDIO     := docker compose -f deploy/docker-compose.audio.yaml --env-file .env
+COMPOSE_AGENT     := docker compose -f deploy/docker-compose.agent.yaml --env-file .env
 
 .PHONY: build up down logs ps \
         up-llm up-image up-ocr \
@@ -21,6 +22,7 @@ COMPOSE_AUDIO     := docker compose -f deploy/docker-compose.audio.yaml --env-fi
         download-scout \
         up-audio up-audio-music up-audio-sfx down-audio logs-audio \
         build-audio download-audio bench-audio \
+        up-agent down-agent logs-agent download-agent \
         gateway-build gateway-run
 
 ## Full stack
@@ -96,6 +98,17 @@ down-image:
 
 down-ocr:
 	$(COMPOSE_OCR) down
+
+## Agent LLM — Qwen3.6-35B-A3B NVFP4 pro OpenClaw (PromoClown)
+## Rezidentní, mimo controller (ten by ho při přepnutí modelu shodil).
+up-agent:
+	$(COMPOSE_AGENT) up -d
+
+down-agent:
+	$(COMPOSE_AGENT) down
+
+logs-agent:
+	$(COMPOSE_AGENT) logs -f --tail=50
 
 ## Translate module
 up-translate:
@@ -189,6 +202,9 @@ download-ocr-models:
 
 download-scout:
 	env $$(grep -v '^#' .env | xargs) bash scripts/download_scout.sh
+
+download-agent:
+	env $$(grep -v '^#' .env | xargs) bash scripts/download_qwen36_agent.sh
 
 ## Go gateway — local dev build and run
 gateway-build:

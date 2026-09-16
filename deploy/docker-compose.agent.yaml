@@ -1,0 +1,67 @@
+# Agent LLM: nvidia/Qwen3.6-35B-A3B-NVFP4 přes vLLM pro OpenClaw (PromoClown).
+#
+# Standalone: docker compose --env-file .env -f deploy/docker-compose.agent.yaml up -d
+#           → nebo: make up-agent   (model nejdřív: make download-agent)
+#
+# Rezidentní — záměrně NENÍ v controller-manager/config/models.yaml: controller
+# při /activate shazuje předchozí model, kdežto agent (heartbeat po 15 min,
+# Telegram) musí běžet pořád.
+#
+# Paměť: váhy 23,4 GB. Qwen3.6 je hybrid (30× Gated DeltaNet + 10× full attention,
+# 2 KV hlavy) → KV cache ~20 KiB/token v bf16; 65k kontext × 4 sekvence ≈ 5 GB.
+# 0.30 × 121 GB ≈ 36 GB pokryje váhy, KV cache i CUDA grafy.
+# Bez --kv-cache-dtype fp8 — na GB10 generuje šum (viz CLAUDE.md), přestože ho
+# NVIDIA playbook pro Spark uvádí.
+#
+# Parsery: tool calls qwen3_xml (NVIDIA recept pro Spark; hermes pro Qwen3.6 ne),
+# reasoning qwen3. Thinking vypíná LiteLLM route openclaw-default
+# (chat_template_kwargs.enable_thinking=false) — thinking bloky matou tool calling.
+
+services:
+
+  qwen36-agent:
+    image: vllm/vllm-openai:${AGENT_VLLM_VERSION:-v0.20.0}
+    container_name: qwen36-agent
+    restart: unless-stopped
+    command: >
+      ${HF_MODEL_AGENT}
+      --served-model-name qwen36-agent
+      --gpu-memory-utilization ${AGENT_GPU_MEMORY_UTILIZATION:-0.30}
+      --max-model-len 65536
+      --max-num-seqs 4
+      --max-num-batched-tokens 8192
+      --enable-chunked-prefill
+      --enable-prefix-caching
+      --enable-auto-tool-choice
+      --tool-call-parser qwen3_xml
+      --reasoning-parser qwen3
+      --trust-remote-code
+    environment:
+      - HF_TOKEN=${HF_TOKEN}
+      - HF_HUB_OFFLINE=1
+    ports:
+      - "127.0.0.1:8040:8000"
+    ipc: host
+    shm_size: 8gb
+    volumes:
+      - ${CACHE_AGENT}:/root/.cache/huggingface/hub
+    networks:
+      - internal
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8000/v1/models"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 900s
+
+networks:
+  internal:
+    external: true
+    name: ai
