@@ -18,6 +18,23 @@ router_settings:
     - shop: ["fallback"]
 
 model_list:
+  # ── Agent — OpenClaw / PromoClown (docker-compose.agent.yaml, rezidentní) ─────
+  # Qwen3.6-35B-A3B NVFP4. Bez fallbacku: jiný model by rozbil tool calling a
+  # OpenClaw cron běh při nedostupném modelu sám přeskočí. Sampling = Qwen
+  # doporučení pro non-thinking; halucinuje-li argumenty toolů, temperature 0.2.
+  - model_name: openclaw-default
+    litellm_params:
+      model: openai/qwen36-agent
+      api_base: http://qwen36-agent:8000/v1
+      api_key: dummy
+      timeout: 300
+      temperature: 0.6
+      top_p: 0.8
+      extra_body:
+        top_k: 20
+        chat_template_kwargs:
+          enable_thinking: false
+
   - model_name: lab
     litellm_params:
       model: openai/lab

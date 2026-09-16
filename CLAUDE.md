@@ -25,6 +25,7 @@ deploy/                       compose soubory, litellm konfigurace, reasoning pa
   docker-compose.translate.yaml
   docker-compose.tune-image.yaml
   docker-compose.ocr.yaml
+  docker-compose.agent.yaml   qwen36-agent: Qwen3.6-35B-A3B NVFP4 pro OpenClaw (rezidentní)
   litellm_config.yaml         routovací tabulka pro hlavní gateway (dev/lab/translate/tune-*)
   litellm_config_swarm.yaml   routovací tabulka pro swarm-litellm
   parsers/                    custom reasoning parsery (nano_v3, nemotron_v3)
@@ -110,6 +111,17 @@ Váhy leží mimo repo v `$AUDIO_MODELS_PATH` (default `/home/ol1n/dev/audio/mod
 ne v `/opt/audio` jak říkal plán — na SPARKu není passwordless sudo.
 Detaily: `services/audio/README.md`, licence `services/audio/LICENSES.md`.
 
+## Agent LLM — qwen36-agent (OpenClaw / PromoClown)
+
+`deploy/docker-compose.agent.yaml`: nvidia/Qwen3.6-35B-A3B-NVFP4 na vLLM, v LiteLLM
+jako `openclaw-default`. OpenClaw gateway běží na hostu a volá `http://127.0.0.1:8080/v1`
+(gateway → litellm), protože litellm:4000 není na host publikovaný.
+
+- **Rezidentní, mimo controller** — `/activate` shazuje předchozí model, agent musí běžet pořád.
+- Tool calls `--tool-call-parser qwen3_xml` (ne hermes); thinking vypíná LiteLLM route.
+- ~36 GB unified paměti (`AGENT_GPU_MEMORY_UTILIZATION=0.30`) — před `make up-agent` ověř `free -g`.
+- `make download-agent` → `make up-agent` → `curl localhost:8040/v1/models`.
+
 ## Porty (vše `127.0.0.1` pokud není uvedeno)
 
 | port | kontejner | poznámka |
@@ -130,6 +142,7 @@ Detaily: `services/audio/README.md`, licence `services/audio/LICENSES.md`.
 | 8014 | swarm-coder-nim | NIM, profile: nim-coder |
 | 8020 | tune-builder | vLLM |
 | 8021 | tune-validator | NIM |
+| 8040 | qwen36-agent | vLLM, rezidentní — OpenClaw přes LiteLLM `openclaw-default` |
 | 4000 | litellm | hlavní gateway |
 | 4001 | swarm-litellm | SwarmBattle gateway |
 | 8080 | gateway | `0.0.0.0`, veřejný přes Cloudflare |
