@@ -17,7 +17,7 @@ from typing import Any
 
 import httpx
 
-from .base import Backend, BackendError, GenSpec, RawAudio
+from .base import Backend, BackendError, BackendUnavailable, GenSpec, RawAudio
 
 log = logging.getLogger(__name__)
 
@@ -68,8 +68,9 @@ class AceStepBackend(Backend):
             "model": model,
             # thinking=True nechá 5Hz LM naplánovat strukturu skladby. U 40s
             # herní smyčky to je rozdíl mezi „nekonečné intro" a stopou, která
-            # má vlastní tvar.
-            "thinking": True,
+            # má vlastní tvar. U coveru ho ACE-Step přeskočí sám (forma je
+            # daná předlohou).
+            "thinking": spec.thinking,
             "audio_format": "wav",
             "batch_size": 1,
         }
@@ -77,28 +78,86 @@ class AceStepBackend(Backend):
             payload["bpm"] = spec.bpm
         if spec.key:
             payload["key_scale"] = spec.key
+        if spec.time_signature:
+            payload["time_signature"] = spec.time_signature
+        if spec.vocal_language:
+            payload["vocal_language"] = spec.vocal_language
+        if not spec.rewrite_caption:
+            payload["use_cot_caption"] = False
+        if spec.task_type != "text2music":
+            payload["task_type"] = spec.task_type
+        if spec.task_type == "cover":
+            payload["audio_cover_strength"] = spec.cover_strength
         if spec.seed is None:
             payload["use_random_seed"] = True
         else:
             payload["use_random_seed"] = False
             payload["seed"] = spec.seed
 
-        task_id = self._submit(payload)
+        files: dict[str, Path] = {}
+        if spec.reference_audio is not None:
+            files["reference_audio"] = spec.reference_audio
+        if spec.src_audio is not None:
+            files["src_audio"] = spec.src_audio
+
+        task_id = self._submit(payload, files)
         result = self._await_result(task_id)
+        files_out = _files(result["entries"])
+        if not files_out:
+            raise BackendError(
+                f"ACE-Step vrátil hotový job bez audia: {json.dumps(result['entries'])[:400]}"
+            )
 
         dst = workdir / "acestep.wav"
-        self._download(result["files"][0], dst)
+        self._download(files_out[0], dst)
         # /query_result seed nevrací — proto se posílá vždy explicitní
         # (jobs.Runner ho dopočítá, i když ho volající nezadal), jinak by
         # stopa nešla zreprodukovat.
         seed = _first_seed(_seed_from(result), spec.seed)
-        return RawAudio(path=dst, seed=seed, model=model)
+        return RawAudio(path=dst, seed=seed, model=model, info=_generation_info(result))
+
+    def analyze(self, audio: Path) -> dict[str, Any]:
+        """Poslech předlohy: 5Hz LM z ní vyčte caption, tempo, tóninu a text.
+
+        ACE-Step to umí jako `full_analysis_only` job — předlohu zakóduje do
+        audio kódů a LM je „přečte" zpátky do metadat. Běží ve stejné frontě
+        jako generování, takže se čeká stejně.
+        """
+        task_id = self._submit({"full_analysis_only": True}, {"src_audio": audio})
+        result = self._await_result(task_id)
+        for entry in result["entries"]:
+            if entry.get("status_message") == _ANALYSIS_OK or "metas" in entry:
+                out = dict(entry)
+                # Kódy jsou tisíce znaků tokenů; nikdo mimo runtime je nečte.
+                out.pop("audio_codes", None)
+                return out
+        raise BackendError(f"ACE-Step analýza nevrátila metadata: {json.dumps(result['entries'])[:400]}")
 
     # --- interní ---
 
-    def _submit(self, payload: dict[str, Any]) -> str:
+    def _submit(self, payload: dict[str, Any], files: dict[str, Path] | None = None) -> str:
         try:
-            resp = self._client.post("/release_task", json=payload, timeout=60.0)
+            if files:
+                # Soubor se dá předat jen uploadem: modelový kontejner nevidí
+                # na disk orchestrátoru a cestu na serveru by stejně odmítl.
+                form = {k: _form_value(v) for k, v in payload.items()}
+                handles = {name: path.open("rb") for name, path in files.items()}
+                try:
+                    resp = self._client.post(
+                        "/release_task",
+                        data=form,
+                        files={name: (files[name].name, fh) for name, fh in handles.items()},
+                        timeout=120.0,
+                    )
+                finally:
+                    for fh in handles.values():
+                        fh.close()
+            else:
+                resp = self._client.post("/release_task", json=payload, timeout=60.0)
+        except (httpx.ConnectError, httpx.ConnectTimeout) as exc:
+            # Kontejner neběží (DNS jméno `audio-music` se v síti ai bez něj
+            # nepřeloží) nebo nepřijímá spojení.
+            raise BackendUnavailable(str(exc)) from exc
         except httpx.HTTPError as exc:
             raise BackendError(f"ACE-Step /release_task nedostupný: {exc}") from exc
         if resp.status_code == 429:
@@ -144,12 +203,7 @@ class AceStepBackend(Backend):
             if status == _STATUS_FAILED:
                 raise BackendError(f"ACE-Step job selhal: {_error_text(item, entries)}")
             if status == _STATUS_DONE or _files(entries):
-                files = _files(entries)
-                if not files:
-                    raise BackendError(
-                        f"ACE-Step vrátil hotový job bez audia: {json.dumps(entries)[:400]}"
-                    )
-                return {"files": files, "entries": entries, "item": item}
+                return {"files": _files(entries), "entries": entries, "item": item}
             last = item.get("progress_text") or f"status={status}"
         raise BackendError(
             f"ACE-Step job {task_id} nedoběhl do {self.timeout_s:.0f}s (poslední stav: {last})"
@@ -171,6 +225,24 @@ class AceStepBackend(Backend):
 
 _STATUS_DONE = 1
 _STATUS_FAILED = 2
+# status_message, kterým ACE-Step značí hotovou analýzu (job_analysis_runtime).
+_ANALYSIS_OK = "Full Hardware Analysis Success"
+
+
+def _form_value(value: Any) -> str:
+    """Multipart pole jsou text; ACE-Step bool čte z "true"/"false"."""
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    return str(value)
+
+
+def _generation_info(result: dict[str, Any]) -> dict[str, Any]:
+    """Co z výsledku patří do manifestu: modely a metadata, ne cesty."""
+    for entry in result.get("entries") or []:
+        info = {k: entry[k] for k in ("dit_model", "lm_model", "metas") if entry.get(k)}
+        if info:
+            return info
+    return {}
 
 
 def _status_code(item: dict[str, Any]) -> int:

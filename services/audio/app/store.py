@@ -31,6 +31,16 @@ CREATE TABLE IF NOT EXISTS jobs (
 CREATE INDEX IF NOT EXISTS jobs_status_created ON jobs (status, created_at);
 """
 
+# Sloupce přidané po prvním nasazení. SQLite neumí ADD COLUMN IF NOT EXISTS,
+# takže se doplní podle PRAGMA table_info — existující jobs.db na SPARKu
+# se tím nezahodí.
+_MIGRATIONS = {
+    # "generate" | "vibe" | "analyze"
+    "task": "ALTER TABLE jobs ADD COLUMN task TEXT NOT NULL DEFAULT 'generate'",
+    # Výsledek, který není audio: analýza předlohy, manifest vibe jobu.
+    "result": "ALTER TABLE jobs ADD COLUMN result TEXT NOT NULL DEFAULT 'null'",
+}
+
 
 class Store:
     def __init__(self, db_path: str) -> None:
@@ -43,19 +53,23 @@ class Store:
         self._lock = threading.Lock()
         with self._lock:
             self._db.executescript(_SCHEMA)
+            have = {row[1] for row in self._db.execute("PRAGMA table_info(jobs)")}
+            for column, ddl in _MIGRATIONS.items():
+                if column not in have:
+                    self._db.execute(ddl)
             self._db.commit()
 
     def close(self) -> None:
         with self._lock:
             self._db.close()
 
-    def create(self, kind: str, request: dict[str, Any], model: str) -> str:
+    def create(self, kind: str, request: dict[str, Any], model: str, task: str = "generate") -> str:
         job_id = uuid.uuid4().hex
         with self._lock:
             self._db.execute(
-                "INSERT INTO jobs (job_id, kind, status, model, request, created_at) "
-                "VALUES (?, ?, 'queued', ?, ?, ?)",
-                (job_id, kind, model, json.dumps(request, ensure_ascii=False), time.time()),
+                "INSERT INTO jobs (job_id, kind, task, status, model, request, created_at) "
+                "VALUES (?, ?, ?, 'queued', ?, ?, ?)",
+                (job_id, kind, task, model, json.dumps(request, ensure_ascii=False), time.time()),
             )
             self._db.commit()
         return job_id
@@ -68,11 +82,18 @@ class Store:
             )
             self._db.commit()
 
-    def mark_done(self, job_id: str, outputs: list[dict[str, Any]]) -> None:
+    def mark_done(
+        self, job_id: str, outputs: list[dict[str, Any]], result: dict[str, Any] | None = None
+    ) -> None:
         with self._lock:
             self._db.execute(
-                "UPDATE jobs SET status='done', outputs=?, finished_at=? WHERE job_id=?",
-                (json.dumps(outputs, ensure_ascii=False), time.time(), job_id),
+                "UPDATE jobs SET status='done', outputs=?, result=?, finished_at=? WHERE job_id=?",
+                (
+                    json.dumps(outputs, ensure_ascii=False),
+                    json.dumps(result, ensure_ascii=False),
+                    time.time(),
+                    job_id,
+                ),
             )
             self._db.commit()
 
@@ -117,4 +138,5 @@ def _row_to_dict(row: sqlite3.Row) -> dict[str, Any]:
     d = dict(row)
     d["request"] = json.loads(d["request"])
     d["outputs"] = json.loads(d["outputs"])
+    d["result"] = json.loads(d.get("result") or "null")
     return d
