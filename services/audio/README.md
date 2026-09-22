@@ -12,6 +12,9 @@ audio-music  :8094   ACE-Step 1.5 REST API (upstream server, vlastní image pro 
 audio-sfx    :8095   MOSS-SoundEffect v2.0 / Stable Audio Open + vlastní wrapper
 ```
 
+Orchestrátor nemá torch, ale od vibe má numpy + librosu (tempo a tónina
+předlohy) — image vyrostl z 0,6 na 1,1 GB, rebuild pořád v minutách.
+
 Plán počítal s jedním kontejnerem a dvěma líně načítanými backendy. Rozdělené
 je to proto, že modelové runtime se nesnesou v jednom image (ACE-Step chce
 `transformers<4.58` a nano-vllm, MOSS jiné pinu), a hlavně proto, že takhle
@@ -40,6 +43,29 @@ GET  /v1/audio/jobs/{id}/outputs/{filename}   → audio
 GET  /v1/audio/models                         → modely + licence + dostupnost
 GET  /v1/audio/models/excluded                → co je vyřazené a proč
 POST /v1/audio/models/{name}/load|unload
+```
+
+Vibe z předlohy — nová skladba se zvukem a náladou nahraného samplu
+(ACE-Step 1.5; měření a ověřené API v `NOTES.md`):
+
+```
+POST /v1/audio/vibe/samples    multipart sample=@…    → {sample_id, duration_s, …, analysis?}
+POST /v1/audio/vibe/analyze    {sample_id}            → 202 {job_id}; result = caption, bpm, keyscale, …
+POST /v1/audio/vibe/generate   {sample_id, mode: vibe|groove, caption?, user_hint?, bpm?, keyscale?,
+                                duration_s?, cover_strength?, lm_plan?, variations, seed?, format}
+                                                      → 202 {job_id}; result = manifest, outputs mp3 + alt.wav
+```
+
+- **vibe** — text2music s referencí (přesně 30 s předlohy): nová melodie, stejná barva a tempo
+- **groove** — cover předlohy (síla 0.5): drží rytmus a formu, mění kabát
+
+Dvoufázově záměrně: aplikace ukáže, co LM z předlohy „slyšel", uživatel
+opraví caption a teprve pak generuje. Analýza je taky job (jde přes frontu
+hudby a přes Cloudflare by synchronně nestihla 100 s).
+
+```bash
+curl -F sample=@lofi.mp3 spark:8093/v1/audio/vibe/samples
+python3 services/audio/scripts/vibe.py lofi.mp3 --mode vibe --batch 3 --hint "more cinematic"
 ```
 
 ElevenLabs shim pro přechodové období (blokuje do dokončení, vrací audio):
@@ -101,6 +127,7 @@ Licence viz `LICENSES.md`.
 | | čas |
 |---|---|
 | hudba, 30s zadání → hotový OGG | 12–15 s |
+| vibe: analýza + 2 varianty ~25 s | ~30 s |
 | SFX, MOSS na 100 krocích | ~24 s |
 | první SFX po startu kontejneru | +60 s (torch.compile) |
 | první hudba po startu kontejneru | +8 min (natažení 10 GB vah) |

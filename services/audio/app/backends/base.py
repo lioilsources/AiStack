@@ -20,12 +20,32 @@ class GenSpec:
     key: str = ""
     model: str = ""
 
+    # Jen hudba z předlohy (vibe/groove), SFX backend je ignoruje.
+    # text2music = nová skladba; cover = přebarvení `src_audio`.
+    task_type: str = "text2music"
+    # Barva a nálada předlohy; melodii nekopíruje (text2music).
+    reference_audio: Path | None = None
+    # Předloha, jejíž rytmus a forma se drží (cover).
+    src_audio: Path | None = None
+    # Jak těsně cover drží předlohu: 1.0 = skoro kopie, 0.2 = volná.
+    cover_strength: float = 1.0
+    time_signature: str = ""
+    vocal_language: str = ""
+    # False = caption jde do modelu doslova. U vibe ji uživatel viděl a
+    # upravil; LM by ji jinak přepsal po svém.
+    rewrite_caption: bool = True
+    # 5Hz LM naplánuje strukturu skladby (audio kódy) před difuzí. Pomalejší
+    # a nejde zopakovat — nano-vllm seed nerespektuje (services/audio/NOTES.md).
+    thinking: bool = True
+
 
 @dataclass(frozen=True)
 class RawAudio:
     path: Path
     seed: int | None
     model: str
+    # Co runtime o generaci řekl (modely, metadata) — jde do manifestu.
+    info: dict | None = None
 
 
 class BackendError(RuntimeError):
@@ -44,3 +64,6 @@ class Backend(Protocol):
 
     def loaded_models(self) -> list[str]:
         """Modely, které má runtime právě natažené."""
+
+    # Volitelně `analyze(path) -> dict` — poslech předlohy. Umí ho jen hudební
+    # backend; bez něj vibe analýza stojí jen na librose.

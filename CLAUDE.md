@@ -106,6 +106,10 @@ Apache-2.0). Modely se zvedají a shazují přes controller
   takže model bez komerční licence se do produkce nesmí dostat
 - ElevenLabs shim `POST /v1/sound-generation`, `POST /v1/music/compose`
   (blokující, vrací audio) — jen pro přechodové období
+- Vibe z předlohy (Ol1nLLM MusicStudio): `POST /v1/audio/vibe/samples|analyze|generate`
+  — ACE-Step poslechne sample a složí novou skladbu se stejnou náladou.
+  Měření a pasti (náhodné vzorkování reference, LM plán nejde zopakovat):
+  `services/audio/NOTES.md`
 
 Váhy leží mimo repo v `$AUDIO_MODELS_PATH` (default `/home/ol1n/dev/audio/models`),
 ne v `/opt/audio` jak říkal plán — na SPARKu není passwordless sudo.

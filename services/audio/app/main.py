@@ -9,21 +9,35 @@ from __future__ import annotations
 
 import logging
 import secrets
+import threading
 import time
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
 
-from fastapi import Depends, FastAPI, Header, HTTPException, Response
+from fastapi import Depends, FastAPI, File, Header, HTTPException, Response, UploadFile
 from fastapi.responses import FileResponse, JSONResponse
 
-from .backends import AceStepBackend, Backend, BackendError, SfxHTTPBackend
+from .backends import AceStepBackend, Backend, BackendError, GenSpec, SfxHTTPBackend
 from .catalog import CATALOG, EXCLUDED, by_kind
 from .config import Config
 from .jobs import Job, Runner, make_spec_from_request
 from .postproc import set_ogg_quality
-from .schemas import JobAccepted, JobStatus, ModelInfo, MusicRequest, Output, SfxRequest
+from .schemas import (
+    JobAccepted,
+    JobStatus,
+    ModelInfo,
+    MusicRequest,
+    Output,
+    SampleOut,
+    SfxRequest,
+    VibeAnalyzeRequest,
+    VibeRequest,
+)
 from .store import Store
+from .vibe.analyze import warm_up
+from .vibe.generate import build_spec, resolve
+from .vibe.sample import MAX_UPLOAD_BYTES, SampleError, SampleStore
 
 logging.basicConfig(
     level=logging.INFO,
@@ -38,17 +52,19 @@ log = logging.getLogger("audio")
 CONFIG: Config = Config()
 store: Store = None  # type: ignore[assignment]  # nastaví lifespan
 runner: Runner = None  # type: ignore[assignment]  # nastaví lifespan
+samples: SampleStore = None  # type: ignore[assignment]  # nastaví lifespan
 backends: dict[str, Backend] = {}
 
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
-    global CONFIG, store, runner
+    global CONFIG, store, runner, samples
     CONFIG = Config()
     set_ogg_quality(CONFIG.ogg_quality)
     Path(CONFIG.data_dir).mkdir(parents=True, exist_ok=True)
 
     store = Store(CONFIG.db_path)
+    samples = SampleStore(Path(CONFIG.data_dir) / "vibe-samples")
     backends.clear()
     if CONFIG.music_url:
         backends["music"] = AceStepBackend(
@@ -63,8 +79,11 @@ async def lifespan(_: FastAPI):
     if orphans:
         log.warning("%d jobů zachyceno restartem, označeno jako chybové", orphans)
 
-    runner = Runner(CONFIG, store, backends)
+    runner = Runner(CONFIG, store, backends, samples)
     runner.start()
+    # První volání librosy stojí ~14 s (import + JIT numby) — ať je nezaplatí
+    # první analýza, která na ně čeká uživatel v telefonu.
+    threading.Thread(target=warm_up, name="vibe-warmup", daemon=True).start()
     log.info("audio ready — music=%s sfx=%s", CONFIG.music_url or "-", CONFIG.sfx_url or "-")
 
     yield
@@ -232,7 +251,9 @@ def job_output(job_id: str, filename: str, _: None = Depends(require_key)) -> Fi
     row = store.get(job_id)
     if row is None:
         raise HTTPException(status_code=404, detail="neznámý job")
-    if not any(o.get("filename") == filename for o in row["outputs"]):
+    known = {o.get("filename") for o in row["outputs"]}
+    known |= {a.get("filename") for o in row["outputs"] for a in (o.get("alt") or {}).values()}
+    if filename not in known:
         raise HTTPException(status_code=404, detail="neznámý výstup")
     path = Path(CONFIG.data_dir) / job_id / filename
     if not path.is_file():
@@ -255,6 +276,8 @@ def _to_status(row: dict[str, Any]) -> JobStatus:
         queue_position=position,
         error=row["error"],
         outputs=[Output(**o) for o in row["outputs"]],
+        task=row.get("task") or "generate",
+        result=row.get("result"),
     )
 
 
@@ -265,6 +288,102 @@ def _media_type(filename: str) -> str:
         ".mp3": "audio/mpeg",
         ".flac": "audio/flac",
     }.get(Path(filename).suffix.lower(), "application/octet-stream")
+
+
+# --- vibe z předlohy ---
+# Dvoufázově záměrně (plán vibe §3 krok 5): uživatel nejdřív vidí, co LM
+# z předlohy „slyšel", opraví caption, a teprve pak generuje. Analýza je taky
+# job, ne synchronní volání: jde přes frontu hudby (sdílí GPU s generováním)
+# a první požadavek po startu modelu čeká na natažení vah — přes Cloudflare
+# by to spadlo na 100s timeoutu.
+
+
+@app.post("/v1/audio/vibe/samples", response_model=SampleOut)
+def upload_sample(sample: UploadFile = File(...), _: None = Depends(require_key)) -> SampleOut:
+    # Synchronně schválně: dekódování a výběr úseku je ffmpeg na sekundy
+    # a v async handleru by po tu dobu stál event loop — i polly ostatních jobů.
+    data = sample.file.read(MAX_UPLOAD_BYTES + 1)
+    try:
+        info = samples.ingest(data, sample.filename or "sample")
+    except SampleError as exc:
+        status = 413 if len(data) > MAX_UPLOAD_BYTES else 422
+        raise HTTPException(status_code=status, detail=str(exc)) from exc
+    return SampleOut(**info.__dict__, analysis=samples.analysis(info.sample_id))
+
+
+@app.get("/v1/audio/vibe/samples/{sample_id}", response_model=SampleOut)
+def get_sample(sample_id: str, _: None = Depends(require_key)) -> SampleOut:
+    info = samples.get(sample_id)
+    if info is None:
+        raise HTTPException(status_code=404, detail="neznámá předloha")
+    return SampleOut(**info.__dict__, analysis=samples.analysis(sample_id))
+
+
+@app.post("/v1/audio/vibe/analyze", status_code=202, response_model=JobAccepted)
+def vibe_analyze(req: VibeAnalyzeRequest, _: None = Depends(require_key)) -> JobAccepted:
+    if "music" not in backends:
+        raise HTTPException(status_code=503, detail="backend pro hudbu není nakonfigurován")
+    if samples.get(req.sample_id) is None:
+        raise HTTPException(status_code=404, detail="neznámá předloha")
+    payload = req.model_dump()
+    job_id = store.create("music", payload, CONFIG.music_model, task="analyze")
+    position = runner.submit(
+        Job(
+            job_id=job_id, kind="music", spec=GenSpec(prompt="", duration_s=0.0),
+            variations=0, fmt="", mono=False, loop=False, task="analyze", payload=payload,
+        )
+    )
+    return JobAccepted(job_id=job_id, queue_position=position)
+
+
+@app.post("/v1/audio/vibe/generate", status_code=202, response_model=JobAccepted)
+def vibe_generate(req: VibeRequest, _: None = Depends(require_key)) -> JobAccepted:
+    if "music" not in backends:
+        raise HTTPException(status_code=503, detail="backend pro hudbu není nakonfigurován")
+    info = samples.get(req.sample_id)
+    if info is None:
+        raise HTTPException(status_code=404, detail="neznámá předloha")
+    analysis = samples.analysis(req.sample_id)
+    try:
+        params = resolve(req.model_dump(), analysis, info)
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+    model = CONFIG.music_model
+    payload = {**req.model_dump(), "resolved": params.__dict__}
+    job_id = store.create("music", payload, model, task="vibe")
+    manifest = {
+        "task": "vibe",
+        "request": req.model_dump(),
+        "params": params.__dict__,
+        "sample": info.__dict__,
+        "analysis": analysis,
+        "model": model,
+        # Turbo DiT, 8 kroků, ODE. Bitově stejná stopa ze stejného seedu to
+        # není ani bez LM — GPU nedeterminismus rozdíl zesílí (měřeno: cover
+        # korelace 0,986, vibe bez LM 0,84, s LM plánem 0,03). Manifest tedy
+        # zaznamenává *jak* stopa vznikla, ne slib, že vznikne znovu stejně.
+        "inference": {
+            "steps": 8, "method": "ode", "lm_plan": params.lm_plan, "lufs": CONFIG.vibe_lufs,
+        },
+        "created_at": time.time(),
+    }
+    position = runner.submit(
+        Job(
+            job_id=job_id,
+            kind="music",
+            spec=build_spec(params, samples, req.sample_id, seed=req.seed, model=model),
+            variations=req.variations,
+            fmt=req.format,
+            mono=False,
+            loop=False,
+            task="vibe",
+            target_lufs=CONFIG.vibe_lufs,
+            extra_formats=("wav",) if req.format != "wav" else (),
+            manifest=manifest,
+        )
+    )
+    return JobAccepted(job_id=job_id, queue_position=position)
 
 
 # --- ElevenLabs shim ---

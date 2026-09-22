@@ -45,6 +45,9 @@ class Config:
     music_lufs: float = field(default_factory=lambda: _env_float("AUDIO_MUSIC_LUFS", -16.0))
     sfx_lufs: float = field(default_factory=lambda: _env_float("AUDIO_SFX_LUFS", -18.0))
     true_peak_db: float = field(default_factory=lambda: _env_float("AUDIO_TRUE_PEAK_DB", -1.0))
+    # Vibe skladby se poslouchají samostatně (telefon, streaming), ne v mixu
+    # hry — proto hlasitěji, na obvyklých −14 LUFS (plán vibe §3 krok 4).
+    vibe_lufs: float = field(default_factory=lambda: _env_float("AUDIO_VIBE_LUFS", -14.0))
 
     ogg_quality: int = field(default_factory=lambda: _env_int("AUDIO_OGG_QUALITY", 6))
     loop_crossfade_s: float = field(default_factory=lambda: _env_float("AUDIO_LOOP_CROSSFADE_S", 2.0))

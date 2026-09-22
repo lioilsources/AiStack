@@ -35,6 +35,8 @@ services:
       - AUDIO_SFX_TIMEOUT_S=${AUDIO_SFX_TIMEOUT_S:-300}
       - AUDIO_MUSIC_LUFS=${AUDIO_MUSIC_LUFS:--16}
       - AUDIO_SFX_LUFS=${AUDIO_SFX_LUFS:--18}
+      # Vibe z předlohy (MusicStudio) se poslouchá samostatně, ne v mixu hry.
+      - AUDIO_VIBE_LUFS=${AUDIO_VIBE_LUFS:--14}
       - AUDIO_TRUE_PEAK_DB=${AUDIO_TRUE_PEAK_DB:--1}
       - AUDIO_OGG_QUALITY=${AUDIO_OGG_QUALITY:-6}
       - AUDIO_API_KEY=${AUDIO_API_KEY:-}

@@ -255,6 +255,7 @@ def process(
     crossfade_s: float,
     max_duration_s: float | None = None,
     sample_rate: int = 44100,
+    extra: list[tuple[Path, str]] | tuple = (),
 ) -> Processed:
     """Celý řetěz: trim → loop → normalizace → převod, a změří výsledek.
 
@@ -300,6 +301,14 @@ def process(
             fmt=fmt, gain_db=gain, limit_db=true_peak_db,
             mono=mono, sample_rate=sample_rate,
         )
+        # Další formáty ze stejného mezisouboru a se stejným ziskem — ať
+        # MP3 a WAV téže varianty nejsou dvě různé stopy.
+        for extra_dst, extra_fmt in extra:
+            encode(
+                cur, extra_dst,
+                fmt=extra_fmt, gain_db=gain, limit_db=true_peak_db,
+                mono=mono, sample_rate=sample_rate,
+            )
 
     final = measure_loudness(dst)
     return Processed(
