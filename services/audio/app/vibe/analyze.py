@@ -18,6 +18,7 @@ from typing import Any, Callable, Optional
 
 import numpy as np
 
+from ..backends.base import BackendUnavailable
 from .prompt import clean_caption
 
 log = logging.getLogger(__name__)
@@ -270,6 +271,10 @@ def analyze(
     if listen is not None:
         try:
             lm = listen(path)
+        except BackendUnavailable:
+            # Model vůbec neběží (noc): analýza jen z librosy by vypadala jako
+            # hotová, ale složit se z ní stejně nedá — lepší říct proč.
+            raise
         except Exception as exc:  # noqa: BLE001 — model může spadnout jakkoli
             log.warning("vibe: LM analýza selhala: %s", exc)
             errors.append(f"LM analýza selhala: {exc}")

@@ -20,7 +20,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from .backends.base import Backend, BackendError, GenSpec
+from .backends.base import Backend, BackendError, BackendUnavailable, GenSpec
 from .config import Config
 from .postproc import FFmpegError, process
 from .store import Store
@@ -191,6 +191,12 @@ class Runner:
                         max_duration_s=spec.duration_s if job.kind == "sfx" else None,
                         extra=extra,
                     )
+                except BackendUnavailable as exc:
+                    # Model neběží — další varianty by dopadly stejně.
+                    if not outputs:
+                        raise
+                    failures.append(f"varianta {idx}: {exc}")
+                    break
                 except (BackendError, FFmpegError) as exc:
                     failures.append(f"varianta {idx}: {exc}")
                     log.warning("job %s varianta %d selhala: %s", job.job_id, idx, exc)

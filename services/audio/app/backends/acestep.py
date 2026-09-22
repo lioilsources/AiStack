@@ -17,7 +17,7 @@ from typing import Any
 
 import httpx
 
-from .base import Backend, BackendError, GenSpec, RawAudio
+from .base import Backend, BackendError, BackendUnavailable, GenSpec, RawAudio
 
 log = logging.getLogger(__name__)
 
@@ -154,6 +154,10 @@ class AceStepBackend(Backend):
                         fh.close()
             else:
                 resp = self._client.post("/release_task", json=payload, timeout=60.0)
+        except (httpx.ConnectError, httpx.ConnectTimeout) as exc:
+            # Kontejner neběží (DNS jméno `audio-music` se v síti ai bez něj
+            # nepřeloží) nebo nepřijímá spojení.
+            raise BackendUnavailable(str(exc)) from exc
         except httpx.HTTPError as exc:
             raise BackendError(f"ACE-Step /release_task nedostupný: {exc}") from exc
         if resp.status_code == 429:

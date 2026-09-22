@@ -24,5 +24,8 @@ def run_analyze(backend: Backend, samples: SampleStore | None, payload: dict[str
     started = time.monotonic()
     result = analyze(samples.src(sample_id), info.duration_s, getattr(backend, "analyze", None))
     doc = {**result.to_dict(), "sample_id": sample_id, "elapsed_s": round(time.monotonic() - started, 2)}
-    samples.save_analysis(sample_id, doc)
+    # Jen úplná analýza patří k předloze. Bez popisu od LM by ji upload
+    # téhož souboru vracel pořád dokola a nový poslech by se nekonal.
+    if result.source.get("caption") == "lm":
+        samples.save_analysis(sample_id, doc)
     return doc

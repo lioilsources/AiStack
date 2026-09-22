@@ -19,6 +19,7 @@ from fastapi import Depends, FastAPI, File, Header, HTTPException, Response, Upl
 from fastapi.responses import FileResponse, JSONResponse
 
 from .backends import AceStepBackend, Backend, BackendError, GenSpec, SfxHTTPBackend
+from .backends.base import MODEL_DOWN
 from .catalog import CATALOG, EXCLUDED, by_kind
 from .config import Config
 from .jobs import Job, Runner, make_spec_from_request
@@ -319,10 +320,24 @@ def get_sample(sample_id: str, _: None = Depends(require_key)) -> SampleOut:
     return SampleOut(**info.__dict__, analysis=samples.analysis(sample_id))
 
 
+def _require_music_model() -> None:
+    """Vibe potřebuje běžící model — jinak 503 hned, ne job, který spadne.
+
+    Upload předlohy model nepotřebuje, analýza a skládání ano. Kontejner
+    přes noc vypíná plánovač, a telefon má dostat srozumitelný důvod.
+    """
+    backend = backends.get("music")
+    if backend is None:
+        raise HTTPException(status_code=503, detail="backend pro hudbu není nakonfigurován")
+    ok, detail = backend.health()
+    if not ok:
+        log.info("vibe: model nedostupný (%s)", detail)
+        raise HTTPException(status_code=503, detail=MODEL_DOWN)
+
+
 @app.post("/v1/audio/vibe/analyze", status_code=202, response_model=JobAccepted)
 def vibe_analyze(req: VibeAnalyzeRequest, _: None = Depends(require_key)) -> JobAccepted:
-    if "music" not in backends:
-        raise HTTPException(status_code=503, detail="backend pro hudbu není nakonfigurován")
+    _require_music_model()
     if samples.get(req.sample_id) is None:
         raise HTTPException(status_code=404, detail="neznámá předloha")
     payload = req.model_dump()
@@ -338,8 +353,7 @@ def vibe_analyze(req: VibeAnalyzeRequest, _: None = Depends(require_key)) -> Job
 
 @app.post("/v1/audio/vibe/generate", status_code=202, response_model=JobAccepted)
 def vibe_generate(req: VibeRequest, _: None = Depends(require_key)) -> JobAccepted:
-    if "music" not in backends:
-        raise HTTPException(status_code=503, detail="backend pro hudbu není nakonfigurován")
+    _require_music_model()
     info = samples.get(req.sample_id)
     if info is None:
         raise HTTPException(status_code=404, detail="neznámá předloha")

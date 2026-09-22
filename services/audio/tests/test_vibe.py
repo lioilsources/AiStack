@@ -563,3 +563,86 @@ def test_existing_database_is_migrated(tmp_path):
     store.mark_done(job_id, [], result={"bpm": 90})
     assert store.get(job_id)["result"] == {"bpm": 90}
     store.close()
+
+
+# --- model neběží (SPARK mimo denní režim) ---
+
+
+def test_vibe_refuses_early_when_model_is_down(client, tmp_path):
+    """Upload jde i bez modelu, analýza a skládání dostanou hned 503 s důvodem."""
+    from app.backends.base import MODEL_DOWN
+
+    sample = _upload(client, make_tone(tmp_path / "t.wav", seconds=8.0))
+    client.music.health = lambda: (False, "nedostupný: [Errno -3]")
+    for path, body in (
+        ("/v1/audio/vibe/analyze", {"sample_id": sample["sample_id"]}),
+        ("/v1/audio/vibe/generate", {"sample_id": sample["sample_id"], "caption": "x"}),
+    ):
+        resp = client.post(path, json=body)
+        assert resp.status_code == 503
+        assert resp.json()["detail"] == MODEL_DOWN
+
+
+def test_model_going_down_mid_job_is_one_readable_error(client, tmp_path):
+    from app.backends.base import MODEL_DOWN, BackendUnavailable
+
+    sample = _upload(client, make_tone(tmp_path / "t.wav", seconds=8.0))
+    calls = []
+
+    def down(spec, workdir):
+        calls.append(spec)
+        raise BackendUnavailable("[Errno -3] Temporary failure in name resolution")
+
+    client.music.generate = down
+    resp = client.post("/v1/audio/vibe/generate", json={
+        "sample_id": sample["sample_id"], "caption": "x", "variations": 3,
+    })
+    job = _await(client, resp.json()["job_id"])
+    assert job["status"] == "error"
+    assert job["error"] == MODEL_DOWN
+    assert len(calls) == 1  # další varianty už se nezkoušely
+
+
+def test_analysis_without_lm_is_not_cached(client, tmp_path):
+    """Degradovaná analýza (LM odpověděl chybou) se k předloze neuloží —
+    jinak by ji upload téhož souboru vracel pořád a nový poslech by nebyl."""
+    sample = _upload(client, make_clicks(tmp_path / "c.wav", bpm=100, seconds=12))
+
+    def broken(_):
+        raise RuntimeError("LLM Understanding failed")
+
+    client.music.analyze = broken
+    resp = client.post("/v1/audio/vibe/analyze", json={"sample_id": sample["sample_id"]})
+    job = _await(client, resp.json()["job_id"])
+    assert job["status"] == "done"
+    assert job["result"]["caption"] == "" and job["result"]["bpm"] is not None
+    assert _upload(client, tmp_path / "c.wav")["analysis"] is None
+
+
+def test_unreachable_lm_fails_analysis_instead_of_degrading(client, tmp_path):
+    from app.backends.base import MODEL_DOWN, BackendUnavailable
+
+    sample = _upload(client, make_clicks(tmp_path / "c.wav", bpm=100, seconds=12))
+
+    def gone(_):
+        raise BackendUnavailable("connection refused")
+
+    client.music.analyze = gone
+    resp = client.post("/v1/audio/vibe/analyze", json={"sample_id": sample["sample_id"]})
+    job = _await(client, resp.json()["job_id"])
+    assert job["status"] == "error" and job["error"] == MODEL_DOWN
+
+
+def test_acestep_connect_error_is_unavailable(tmp_path):
+    import httpx
+
+    from app.backends.base import BackendUnavailable
+    from tests.test_backends import make_acestep
+
+    def handler(_: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectError("[Errno -3] Temporary failure in name resolution")
+
+    with pytest.raises(BackendUnavailable):
+        make_acestep(handler).generate(GenSpec(prompt="x", duration_s=10), tmp_path)
+    with pytest.raises(BackendUnavailable):
+        make_acestep(handler).analyze(make_tone(tmp_path / "a.wav", seconds=1.0))

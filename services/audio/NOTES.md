@@ -129,6 +129,23 @@ drží jen někdy, nad 0.5 už nepřibývá — výchozí je proto **0.5**.
 Barvu zvuku ani to, jestli „kabát" zní jinak, tahle čísla neměří; to je na
 poslech.
 
+## Když model neběží
+
+`audio-music` je nahoře jen v denním režimu SPARKu (plánovač
+`WorldLibraryProject/deploy/spark/rag-schedule.sh`, 07:00–00:00). Mimo něj:
+
+- upload předlohy projde (je to jen ffmpeg),
+- `/vibe/analyze` a `/vibe/generate` vrátí hned `503` s `MODEL_DOWN` — ne job,
+  který by po frontě spadl na `[Errno -3] Temporary failure in name resolution`
+  (jméno `audio-music` se bez kontejneru v síti `ai` nepřeloží),
+- model spadlý uprostřed jobu je `BackendUnavailable`: runner nezkouší další
+  varianty a job skončí jednou čitelnou hláškou,
+- LM, který odpoví chybou (běží, ale analýza selže), analýzu nezastaví —
+  tempo a tónina přijdou z librosy — ale taková analýza se k předloze
+  **neuloží**; jinak by ji upload téhož souboru vracel dokola.
+
+Ověřeno 22. 9. 2026 proti orchestrátoru s nedostupným `AUDIO_MUSIC_URL`.
+
 ## Co zbývá ověřit poslechem
 
 - vibe: sedí nástroje a nálada (plán §4 bod 2) — MFCC průměr se od varianty

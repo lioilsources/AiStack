@@ -52,6 +52,20 @@ class BackendError(RuntimeError):
     pass
 
 
+# Hláška pro člověka, ne stack: kontejner s modelem na SPARKu přes noc
+# vypíná plánovač režimů (WorldLibraryProject rag-schedule.sh, 00:00–07:00),
+# takže „nedostupný" je nejčastěji plánovaný stav, ne porucha.
+MODEL_DOWN = "Hudební model teď neběží (SPARK je mimo denní režim 07–24, nebo je audio-music dole). Zkus to později."
+
+
+class BackendUnavailable(BackendError):
+    """Model se nedá vůbec kontaktovat — ne že by odpověděl chybou."""
+
+    def __init__(self, detail: str = "") -> None:
+        super().__init__(MODEL_DOWN)
+        self.detail = detail
+
+
 class Backend(Protocol):
     name: str
     kind: str  # "music" | "sfx"
