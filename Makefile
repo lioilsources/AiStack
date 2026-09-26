@@ -23,7 +23,7 @@ COMPOSE_AGENT     := docker compose -f deploy/docker-compose.agent.yaml --env-fi
         up-audio up-audio-music up-audio-sfx down-audio logs-audio \
         build-audio download-audio bench-audio \
         up-agent down-agent logs-agent download-agent \
-        gateway-build gateway-run
+        gateway-build gateway-run oom-guard-build
 
 ## Full stack
 build:
@@ -132,9 +132,12 @@ down-swarm:
 up-swarm-director:
 	$(COMPOSE_SWARM) --profile director up -d swarm-director
 
-# Noční profil pro obohacení knihovního korpusu (util 0.80, len 32k) —
+# Noční profil pro obohacení knihovního korpusu (util 0.75, len 32k) —
 # base profil s util 0.60 je míň než samotné váhy a vLLM nenaběhne.
+# mem-admit odmítne start bez rezervy (25. 9. 2026 to zamrazilo stroj).
+DIRECTOR_GPU_UTIL ?= 0.75
 up-director-night:
+	scripts/mem-admit.sh swarm-director $(DIRECTOR_GPU_UTIL)
 	docker compose -f deploy/docker-compose.swarm.yaml -f deploy/docker-compose.director-night.yaml \
 		--env-file .env --profile director up -d --no-deps swarm-director
 
@@ -227,3 +230,7 @@ gateway-run: gateway-build
 	  IMAGE_API_URL=http://localhost:8002 \
 	  OCR_API_URL=http://localhost:8003 \
 	  ./gateway
+
+## SPARK OOM guard (spark/README.md) — binárka se staví na Macu, SPARK nemá Go
+oom-guard-build:
+	cd spark/oom-guard && GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o spark-oom-guard .

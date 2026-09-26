@@ -1,0 +1,22 @@
+[Unit]
+Description=SPARK OOM guard — zabije GPU kontejner dřív, než paměť zamrazí stroj
+Documentation=file:///home/ol1n/deploy/AiStack/spark/README.md
+After=docker.service
+Wants=docker.service
+
+[Service]
+Type=simple
+EnvironmentFile=/etc/default/spark-oom-guard
+ExecStart=/usr/local/sbin/spark-oom-guard
+Restart=always
+RestartSec=2
+# Guard musí přežít všechno, co se snaží zastavit.
+OOMScoreAdjust=-1000
+MemoryMin=64M
+LimitMEMLOCK=infinity
+Nice=-10
+IOSchedulingClass=realtime
+CPUWeight=1000
+
+[Install]
+WantedBy=multi-user.target
