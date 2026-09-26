@@ -8,13 +8,14 @@
 # nulovou rezervu a při zachytávání CUDA grafů zamrazil celý SPARK
 # (rag-schedule.sh má vlastní memory_check, ruční start ho obešel).
 #
-# Rezerva default 12 GiB: 25. 9. běžel director s util 0.75 (91 GiB) při
-# MemAvailable 96 GiB, tedy s rezervou ~5 GiB, a to nestačilo (flux-schnell
-# nahoře, špička při capture CUDA grafů). V řádném nočním okně je dole i flux
-# (~17 GiB), rezerva vychází ~20 GiB — 12 tedy pustí noc a zastaví 25. 9.
-# Obejít: MEM_ADMIT_FORCE=1.
+# Rezerva default 2 GiB. Změřeno 26. 9. v režimu rag (ComfyUI, flux, audio,
+# translate i agent dole): MemAvailable 95 GiB, director 0.75 chce 91,3 —
+# reálná noční rezerva je ~4 GiB a s ní noci týdny běží. Víc by zablokovalo
+# každou noc (první verze s 12 GiB to udělala). Tahle kontrola chytá souběh:
+# s běžícím flux-schnell (~17 GiB) je k dispozici ~78 a start neprojde.
+# Běhovou špičku hlídá spark-oom-guard. Obejít: MEM_ADMIT_FORCE=1.
 set -euo pipefail
-name="$1" util="$2" headroom="${3:-${MEM_ADMIT_HEADROOM_GIB:-12}}"
+name="$1" util="$2" headroom="${3:-${MEM_ADMIT_HEADROOM_GIB:-2}}"
 
 if [ "$(docker inspect -f '{{.State.Running}}' "$name" 2>/dev/null)" = "true" ]; then
   exit 0   # už běží — up -d nic nealokuje

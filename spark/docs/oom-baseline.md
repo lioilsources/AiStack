@@ -64,4 +64,6 @@ Po startu se samy zvedly `flux-schnell`, `audio-music`, `audio-sfx`, ComfyUI
 
 - noční profil (director 0.75): MemAvailable a PSI během běhu obohacení —
   guard je loguje každou minutu (`journalctl -u spark-oom-guard | grep avail=`)
-- zda `GUARD_MIN_AVAIL_MIB=2048` nesedí příliš blízko normálního nočního dna
+- ~~zda práh guardu nesedí příliš blízko nočního dna~~ — seděl: v režimu rag
+  (26. 9. 12:30) je MemAvailable 95 GiB před startem directora, po něm ~4 GiB.
+  Práh snížen 2048 → 1024 MiB, rezerva mem-admit 12 → 2 GiB.
