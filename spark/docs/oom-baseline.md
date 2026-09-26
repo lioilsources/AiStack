@@ -67,3 +67,7 @@ Po startu se samy zvedly `flux-schnell`, `audio-music`, `audio-sfx`, ComfyUI
 - ~~zda práh guardu nesedí příliš blízko nočního dna~~ — seděl: v režimu rag
   (26. 9. 12:30) je MemAvailable 95 GiB před startem directora, po něm ~4 GiB.
   Práh snížen 2048 → 1024 MiB, rezerva mem-admit 12 → 2 GiB.
+- Start directora (26. 9. 12:40–12:42): čtení vah drží PSI some/full 20–46
+  při 26–29 GiB volných; po alokaci KV cache (23,3 GiB) ustálený stav
+  **3,4 GiB volných**, PSI ještě ~17 (doznívající avg10). PSI podmínky guardu
+  proto platí jen pod 2 GiB.
