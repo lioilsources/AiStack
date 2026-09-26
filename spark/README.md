@@ -66,12 +66,29 @@ sudo rm /var/lib/spark-oom-guard/last-reboot      # povolit další reboot dří
 MEM_ADMIT_FORCE=1 make up-director-night          # start i bez rezervy (vědomě)
 ```
 
-## Zbývá (Fáze 6)
+## Testy (Fáze 6)
 
 Hotovo: guard zabije docker i cgroup cíl, `unless-stopped` oběť nevrátí,
 prázdný seznam → dry-run reboot, reboot blokovaný razítkem.
-Nevyzkoušeno — ničí běžící služby nebo stroj, pouštět vědomě:
 
-1. `stress-ng --vm 2 --vm-bytes 90% --timeout 60s` na hostu → guard musí zabít
-   první GPU cíl, SSH musí žít.
-2. `echo c | sudo tee /proc/sysrq-trigger` (kernel panic) → watchdog restartuje do ~60 s.
+**Paměťový tlak, 2026-09-26 11:52.** `stress-ng --vm 4 --vm-bytes 115G --vm-keep`
+(pozor: `--vm-bytes` je v této verzi *celkem*, ne na workera) v kontejneru
+pojmenovaném `flux-kontext` — druhý cíl guardu, takže obětí je stress sám a denní
+služby zůstanou:
+
+| čas | MemAvailable | PSI full avg10 | |
+|---|---|---|---|
+| :02 | 73 GiB | 0 | start |
+| :09 | 13 GiB | 1,1 | swap začíná |
+| :13 | 1,7 GiB | 18,8 | pod prahem |
+| :14–:16 | 0 | 29 | |
+| :16,9 | | 36 | **guard: zabit docker:flux-kontext** |
+| :20 | 78 GiB | 31 → 0 do ~1 min | paměť zpět |
+
+SSH ze sondy co 2 s: 45/45 ok, nejhorší 1,8 s (v :16). Kernel OOM killer se
+neozval, flux-schnell/audio/ComfyUI/library-chat běžely dál, Telegram odešel.
+Paměť padala ~11 GiB/s, takže MemAvailable dosáhla nuly ještě během 3s okna —
+kdyby bylo potřeba reagovat dřív, `GUARD_AVAIL_FOR=1s`.
+
+Nevyzkoušeno: `echo c | sudo tee /proc/sysrq-trigger` (kernel panic) → watchdog
+restartuje do ~60 s.
