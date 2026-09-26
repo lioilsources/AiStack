@@ -45,6 +45,7 @@ type config struct {
 	psiFullFor   time.Duration
 	psiSome      float64
 	psiSomeFor   time.Duration
+	psiMaxAvail  int64 // PSI se počítá jen pod touhle MemAvailable (MiB)
 	cooldown     time.Duration
 	rebootAfter  time.Duration
 	reboot       bool
@@ -79,19 +80,24 @@ func envFloat(k, def string) float64 {
 	return f
 }
 
-func loadConfig() config {
-	minAvail, err := strconv.ParseInt(env("GUARD_MIN_AVAIL_MIB", "2048"), 10, 64)
+func envInt(k, def string) int64 {
+	v, err := strconv.ParseInt(env(k, def), 10, 64)
 	if err != nil {
-		log.Fatalf("GUARD_MIN_AVAIL_MIB: %v", err)
+		log.Fatalf("%s: %v", k, err)
 	}
+	return v
+}
+
+func loadConfig() config {
 	return config{
 		targets:      strings.Fields(env("GUARD_TARGETS", "docker:swarm-director")),
-		minAvailMiB:  minAvail,
+		minAvailMiB:  envInt("GUARD_MIN_AVAIL_MIB", "1024"),
 		availFor:     envDur("GUARD_AVAIL_FOR", "3s"),
 		psiFull:      envFloat("GUARD_PSI_FULL", "15"),
 		psiFullFor:   envDur("GUARD_PSI_FULL_FOR", "10s"),
 		psiSome:      envFloat("GUARD_PSI_SOME", "40"),
 		psiSomeFor:   envDur("GUARD_PSI_SOME_FOR", "15s"),
+		psiMaxAvail:  envInt("GUARD_PSI_MAX_AVAIL_MIB", "8192"),
 		cooldown:     envDur("GUARD_COOLDOWN", "15s"),
 		rebootAfter:  envDur("GUARD_REBOOT_AFTER", "3m"),
 		reboot:       env("GUARD_REBOOT", "1") == "1",
@@ -334,8 +340,8 @@ func main() {
 		log.Printf("mlockall: %v (pokračuji)", err)
 	}
 
-	log.Printf("start: min_avail=%dMiB/%s psi_full>=%.0f/%s psi_some>=%.0f/%s reboot=%v dry_run=%v cíle=%s",
-		cfg.minAvailMiB, cfg.availFor, cfg.psiFull, cfg.psiFullFor, cfg.psiSome, cfg.psiSomeFor,
+	log.Printf("start: min_avail=%dMiB/%s psi_full>=%.0f/%s psi_some>=%.0f/%s (psi jen pod %dMiB) reboot=%v dry_run=%v cíle=%s",
+		cfg.minAvailMiB, cfg.availFor, cfg.psiFull, cfg.psiFullFor, cfg.psiSome, cfg.psiSomeFor, cfg.psiMaxAvail,
 		cfg.reboot, cfg.dryRun, strings.Join(cfg.targets, " "))
 
 	var (
@@ -355,9 +361,13 @@ func main() {
 			continue
 		}
 
+		// PSI sám nestačí: director při startu čte 75 GiB vah a reclaim page cache
+		// vyžene PSI přes 40 při 27 GiB volných (26. 9. ho to zabilo). Skutečný
+		// nedostatek (25. 9., stress test) měl vždy MemAvailable 0–2 GiB.
+		tight := s.availMiB < cfg.psiMaxAvail
 		lowAvail := hAvail.update(now, s.availMiB < cfg.minAvailMiB, cfg.availFor)
-		fullHi := hFull.update(now, s.fullAvg >= cfg.psiFull, cfg.psiFullFor)
-		someHi := hSome.update(now, s.someAvg >= cfg.psiSome, cfg.psiSomeFor)
+		fullHi := hFull.update(now, tight && s.fullAvg >= cfg.psiFull, cfg.psiFullFor)
+		someHi := hSome.update(now, tight && s.someAvg >= cfg.psiSome, cfg.psiSomeFor)
 		trouble := lowAvail || fullHi || someHi
 
 		if now.Sub(lastBeat) >= cfg.heartbeat {
