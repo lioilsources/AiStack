@@ -90,5 +90,10 @@ neozval, flux-schnell/audio/ComfyUI/library-chat běžely dál, Telegram odešel
 Paměť padala ~11 GiB/s, takže MemAvailable dosáhla nuly ještě během 3s okna —
 kdyby bylo potřeba reagovat dřív, `GUARD_AVAIL_FOR=1s`.
 
-Nevyzkoušeno: `echo c | sudo tee /proc/sysrq-trigger` (kernel panic) → watchdog
-restartuje do ~60 s.
+**Kernel panic, 2026-09-26 12:13.** `echo c | sudo tee /proc/sysrq-trigger`.
+`kernel.panic=0` (kernel sám nerestartuje) a kdump nemá rezervovanou paměť,
+takže stroj vrátil jen watchdog: poslední zápis v journalu 12:13:17, boot
+12:17:09, ping 12:17:27, SSH 12:17:33 — **~4 min bez ruky**, z toho ~60 s
+timeout watchdogu (`sbsa-gwdt … action=1`, reset už při prvním timeoutu)
+a zbytek firmware + boot. Guard naběhl sám, kontejnery s `unless-stopped`
+taky, ComfyUI vrátil `rag-schedule` 3 min po bootu.
