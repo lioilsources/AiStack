@@ -11,3 +11,4 @@ cloudflared/*.json
 cloudflared/cert.pem
 deploy/parsers/*.py
 outputs/
+spark/oom-guard/spark-oom-guard
