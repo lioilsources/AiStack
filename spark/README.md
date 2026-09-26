@@ -13,7 +13,7 @@ stroj dvě hodiny točil v OOM livelocku a zabíjel procesy s 1 MB RSS.
 | vrstva | co dělá | kde |
 |---|---|---|
 | **mem-admit** | `make up-director-night` odmítne start, když `MemAvailable < util × total + 2 GiB` | `scripts/mem-admit.sh` |
-| **spark-oom-guard** | hlavní pojistka: MemAvailable < 1 GiB 3 s, nebo PSI full ≥ 15 10 s, nebo PSI some ≥ 40 15 s → SIGKILL prvního živého cíle ze seznamu; když není koho zabít a tlak trvá 3 min → reboot (nejvýš 1× za hodinu) | `oom-guard/` |
+| **spark-oom-guard** | hlavní pojistka: MemAvailable < 1 GiB 3 s, nebo (při MemAvailable < 8 GiB) PSI full ≥ 15 10 s / some ≥ 40 15 s → SIGKILL prvního živého cíle ze seznamu; když není koho zabít a tlak trvá 3 min → reboot (nejvýš 1× za hodinu) | `oom-guard/` |
 | sysctl | `min_free_kbytes` 1 GiB, sysrq, swap tuning | `etc/sysctl.d/90-oom-guard.conf` |
 | watchdog | SBSA watchdog přes systemd, 60 s — jen na skutečný hang kernelu/PID 1 | `etc/systemd/system.conf.d/` |
 | protect | `OOMScoreAdjust=-1000` pro ssh, docker, containerd, NetworkManager, networkd, tailscaled | `etc/systemd/protect/` |
