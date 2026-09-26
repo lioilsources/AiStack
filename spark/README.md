@@ -12,8 +12,8 @@ stroj dvě hodiny točil v OOM livelocku a zabíjel procesy s 1 MB RSS.
 
 | vrstva | co dělá | kde |
 |---|---|---|
-| **mem-admit** | `make up-director-night` odmítne start, když `MemAvailable < util × total + 12 GiB` | `scripts/mem-admit.sh` |
-| **spark-oom-guard** | hlavní pojistka: MemAvailable < 2 GiB 3 s, nebo PSI full ≥ 15 10 s, nebo PSI some ≥ 40 15 s → SIGKILL prvního živého cíle ze seznamu; když není koho zabít a tlak trvá 3 min → reboot (nejvýš 1× za hodinu) | `oom-guard/` |
+| **mem-admit** | `make up-director-night` odmítne start, když `MemAvailable < util × total + 2 GiB` | `scripts/mem-admit.sh` |
+| **spark-oom-guard** | hlavní pojistka: MemAvailable < 1 GiB 3 s, nebo PSI full ≥ 15 10 s, nebo PSI some ≥ 40 15 s → SIGKILL prvního živého cíle ze seznamu; když není koho zabít a tlak trvá 3 min → reboot (nejvýš 1× za hodinu) | `oom-guard/` |
 | sysctl | `min_free_kbytes` 1 GiB, sysrq, swap tuning | `etc/sysctl.d/90-oom-guard.conf` |
 | watchdog | SBSA watchdog přes systemd, 60 s — jen na skutečný hang kernelu/PID 1 | `etc/systemd/system.conf.d/` |
 | protect | `OOMScoreAdjust=-1000` pro ssh, docker, containerd, NetworkManager, networkd, tailscaled | `etc/systemd/protect/` |
@@ -53,8 +53,11 @@ zálohy přepsaných souborů jsou v `/var/backups/spark-oom-guard/<čas>/`.
   `max-model-len` a `max-num-seqs`, nikde `swap-space`/`cpu-offload`; FP8 KV je
   na GB10 zakázané (šum, CLAUDE.md). Director nejde pod ~0.72 — váhy mají 74 GiB.
   Problém nebyla jedna služba s 0.9, ale souběh (director + flux + ComfyUI).
-- **„≥ 16 GiB volné pro host" platí jen mimo noční okno.** Director 0.75 nechává
-  ~15–20 GiB; mem-admit s rezervou 12 GiB brání startu, kdy by to bylo míň.
+- **„≥ 16 GiB volné pro host" v nočním okně neplatí.** V režimu rag je volných
+  95 GiB a director 0.75 si bere 91,3 — zbývá ~4 GiB (změřeno 26. 9.). Víc
+  by chtělo util ~0.65, což je pod váhami + rozumnou KV cache. Tuhle rezervu
+  drží rozvrh (nic dalšího v noci neběží), mem-admit (start jen s ≥ 2 GiB navíc)
+  a guard (zásah pod 1 GiB).
 
 ## Provoz
 
