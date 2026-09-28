@@ -284,7 +284,12 @@ services:
     networks:
       - internal
     healthcheck:
-      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:4000/health')"]
+      # /health/liveliness, not /health: /health pings every model deployment
+      # (a real completion against swarm-director), which under load takes
+      # longer than the 5 s timeout — litellm went "unhealthy", container-healer
+      # restarted it every ~30 min and each restart failed 4–5 in-flight
+      # requests with 502 (Storyteller extract, 2026-09-28).
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:4000/health/liveliness')"]
       interval: 10s
       timeout: 5s
       retries: 5
