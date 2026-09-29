@@ -21,11 +21,13 @@ BENCH = Path(__file__).resolve().parent
 RESULTS = BENCH / "results"
 URL = os.environ.get("BENCH_URL", "http://localhost:8080/v1")
 
-# "Neuvař SPARKa": director nights peak at GPU 85 °C / zone 96 °C
-# (~/ops/thermal.csv, 2026-09-26..28). The bench is interactive-sized load,
-# so it pauses well below that and resumes only after a real cool-down.
-HOT_GPU_C, HOT_ZONE_C = 80, 90
-COOL_GPU_C, COOL_ZONE_C = 72, 82
+# "Neuvař SPARKa": the GPU throttles itself (sw thermal) around zone 95 °C, and
+# that is routine — director nights sit at GPU 85 / zone 96 °C, a Kirian video
+# render alone at 81 / 96 (~/ops/thermal.csv, 2026-09-26..29). Pausing at 80/90
+# (the first version) only fired while a render ran alongside and would stall
+# the bench for nothing. This guard is for runaways above the routine peak.
+HOT_GPU_C, HOT_ZONE_C = 87, 98
+COOL_GPU_C, COOL_ZONE_C = 80, 90
 THERMAL_CSV = Path.home() / "ops" / "thermal.csv"
 THERMAL_EVENTS = Path.home() / "ops" / "thermal-events.csv"
 
