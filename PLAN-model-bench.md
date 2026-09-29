@@ -116,6 +116,8 @@ Paměť skutečná (`free -g` po startu + při 4 souběžných), tok/s jeden str
 
 ## 5. Rozvrh — kam se co vejde (společný pro bench i tři běhy)
 
+> **Oprava 2026-09-29 (incident):** souběh ComfyUI renderu a 36 GiB LLM **nefunguje**, i když to čísla níž dovolují. Lab vlna A (flux-dev) vedle benchmarku translate-lean: načtení vah FLUX znovu naplnilo page cache, ComfyUI (vidí jen MemFree) spadl na CPU render, 45 min ~90 W se zónou 93–95 °C, pak OOM guard zabil ComfyUI a 277/288 buněk skončilo 502. **Platí: ComfyUI render a velký LLM jen sériově**, mezi nimi `POST /free` na ComfyUI; pojistka při horku volá `/interrupt`; cizí render (video-stack) má přednost. Tabulka níž je proto kapacitní strop, ne rozvrh souběhu — Lab a bench se střídají.
+
 Přes den běží **Lab benchmark postav v ComfyUI (52 GiB, ~5 GPU-h, §8.1)** — sdílí výpočet, ne paměť; kvalita se měřit dá, latence ne. ToyShaders B1–B3 běží na Macu a chce ze SPARKu jen LLM (+ VL pro B4). Právník chce model s tools (C1) a `law-chat` (běží pořád, 1,3 GiB).
 
 | Slot | Nahoru | GiB (s ComfyUI 52) | Bench | Lab (§8.1) | Právník (§8.2) | ToyShaders (§8.3) |
