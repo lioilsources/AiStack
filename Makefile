@@ -6,6 +6,7 @@ COMPOSE_OCR   := docker compose -f deploy/docker-compose.ocr.yaml --env-file .en
 COMPOSE_SWARM := docker compose -f deploy/docker-compose.swarm.yaml --env-file .env
 COMPOSE_TUNE      := docker compose -f deploy/docker-compose.tune-image.yaml --env-file .env
 COMPOSE_TRANSLATE := docker compose -f deploy/docker-compose.translate.yaml --env-file .env
+COMPOSE_VL := docker compose -f deploy/docker-compose.vl.yaml --env-file .env
 COMPOSE_AUDIO     := docker compose -f deploy/docker-compose.audio.yaml --env-file .env
 COMPOSE_AGENT     := docker compose -f deploy/docker-compose.agent.yaml --env-file .env
 
@@ -16,6 +17,7 @@ COMPOSE_AGENT     := docker compose -f deploy/docker-compose.agent.yaml --env-fi
         up-swarm down-swarm up-swarm-director up-director-night down-swarm-director \
         up-tune-image down-tune-image \
         up-dev down-dev logs-dev \
+        up-vl down-vl \
         up-image-schnell up-image-kontext up-image-dev down-image-nim logs-kontext \
         download-flux download-flux-lora download-qwen-vl \
         download-nemotron download-nemotron-coder download-ocr-models \
@@ -89,6 +91,14 @@ up-image:
 
 up-ocr:
 	$(COMPOSE_OCR) up -d --build
+
+## VL soudce (Qwen2.5-VL-7B, ~20 GiB) — PLAN-model-bench.md, ShaderGen v2
+up-vl:
+	scripts/mem-admit.sh vl 0.18
+	$(COMPOSE_VL) up -d
+
+down-vl:
+	$(COMPOSE_VL) down
 
 down-llm:
 	$(COMPOSE_LLM) down

@@ -1,0 +1,3 @@
+results/*/
+!results/summary.md
+__pycache__/

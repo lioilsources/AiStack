@@ -137,6 +137,28 @@ model_list:
         chat_template_kwargs:
           enable_thinking: false
 
+  # ── Model bench (PLAN-model-bench.md) ───────────────────────────────────────
+  # Neutrální aliasy pro srovnání: stejná teplota, thinking vyp., BEZ fallbacků
+  # (router_settings.fallbacks je nezná, takže se model tiše nepřehodí).
+  # Produkční aliasy (openclaw-default 0.6/0.8, translate…) se nemění.
+  - model_name: bench-qwen36
+    litellm_params: {model: openai/qwen36-agent, api_base: "http://qwen36-agent:8000/v1", api_key: dummy, timeout: 600, temperature: 0.2, extra_body: {chat_template_kwargs: {enable_thinking: false}}}
+  - model_name: bench-qwen36-think
+    litellm_params: {model: openai/qwen36-agent, api_base: "http://qwen36-agent:8000/v1", api_key: dummy, timeout: 900, temperature: 0.6, extra_body: {chat_template_kwargs: {enable_thinking: true}}}
+  - model_name: bench-translate
+    litellm_params: {model: openai/translate, api_base: "http://translate:8000/v1", api_key: dummy, timeout: 600, temperature: 0.2, extra_body: {chat_template_kwargs: {enable_thinking: false}}}
+  - model_name: bench-nano
+    litellm_params: {model: openai/swarm-nano, api_base: "http://swarm-nano:8000/v1", api_key: dummy, timeout: 600, temperature: 0.2, extra_body: {chat_template_kwargs: {enable_thinking: false}}}
+  - model_name: bench-director
+    litellm_params: {model: openai/swarm-director, api_base: "http://swarm-director:8000/v1", api_key: dummy, timeout: 900, temperature: 0.2, extra_body: {chat_template_kwargs: {enable_thinking: false}}}
+  - model_name: bench-gemma
+    litellm_params: {model: openai/gemma, api_base: "http://bench-gemma:8000/v1", api_key: dummy, timeout: 600, temperature: 0.2}
+  - model_name: bench-llama33
+    litellm_params: {model: openai/llama33, api_base: "http://bench-llama33:8000/v1", api_key: dummy, timeout: 1800, temperature: 0.2}
+  # VL soudce pro ShaderGen v2 (Fáze 5) — deploy/docker-compose.vl.yaml
+  - model_name: vl
+    litellm_params: {model: openai/vl, api_base: "http://vl:8000/v1", api_key: dummy, timeout: 300, temperature: 0.1}
+
   # ── OCR — Qwen2.5-VL-7B přes vLLM (VLM, image_url v chat/completions) ──────────
   # On-demand (controller: /ctrl/activate?model=ocr). Appka volá model "ocr".
   # Default sampling params proti zacyklení Qwenu na tabulkových/matričních skenech
