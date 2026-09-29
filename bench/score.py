@@ -94,6 +94,11 @@ def score_model(d: Path) -> dict[str, str]:
                 full.append(False)
         row |= {"C2 JSON": pct(valid), "C2 všechna pole": pct(full)}
 
+    b1 = load(d, "b1")
+    if b1:
+        row |= {"B1 kontrakt": pct([bool(r.get("passed")) for r in b1.values()]), "B1 retry": mean([r.get("retries") for r in b1.values()], "{:.1f}"),
+                "B5 ranker JSON": pct([bool(r.get("rank_json")) for r in b1.values()]), "B1 s/shader": mean([r.get("s") for r in b1.values()])}
+
     c3 = load(d, "c3")
     if c3:
         row |= {"C3 stream": pct([bool(r.get("first_token_ms")) for r in c3.values()]), "C3 1. token ms": mean([r.get("first_token_ms") for r in c3.values()])}
