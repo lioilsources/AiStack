@@ -55,7 +55,7 @@ Základ (OS, LiteLLM, gateway, chroma, law-chat, library-chat, postiz, kontejner
 
 ## 3. Denní rozvrh
 
-### 3a. Nasazeno 2026-10-01 (fáze 1)
+### 3a. Fáze 1 (2026-10-01 dopoledne, nahrazeno 3b)
 
 | Čas | Profil |
 |---|---|
@@ -63,7 +63,7 @@ Základ (OS, LiteLLM, gateway, chroma, law-chat, library-chat, postiz, kontejner
 | 17–01 | llm (heartbeat PromoClowna 17:05–00:55) |
 | 01–07 | director |
 
-### 3b. Návrh: kratší comfy, director i přes den (čeká na potvrzení)
+### 3b. Platí od 2026-10-01 14:16: kratší comfy, director i přes den
 
 ComfyUI nikdo nepotřebuje denně (§1: Kirian, Stickers, MusicStudio, lab — vše nárazově, minuty až hodiny týdně)
 a tier 0 obrázky obslouží flux-schnell i v llm okně. Naopak director má frontu na desítky hodin
@@ -118,12 +118,13 @@ Aukrofy ne.
 | Fáze | Co | Stav |
 |---|---|---|
 | 1 | profily comfy / llm / gemma / director, okna 07/17/01, `library-chapters` + `storyteller-night` v noci, translate ven, tributy 16:30, heartbeat 17:05–00:55 | **nasazeno 2026-10-01** (WorldLibraryProject 8857abc, PromoClown PR #2) |
-| 1b | llm = qwen36 + flux-schnell (Nano/embed ven, cold); okna podle §3b; tributy a heartbeat posunout | čeká na potvrzení §3b |
+| 1b | llm = qwen36 + flux-schnell (Nano/embed ven, cold); okna podle §3b; tributy 12:30, heartbeat 19:05–00:55; sonda toleruje 1 variantu useknutou na délce | **nasazeno 2026-10-01 14:16** (WorldLibraryProject PR #11, PromoClown PR #3) |
 | 2 | fronta dávek + gemma na vyžádání + zkracování prázdných oken | |
 | 3 | přehled (profil, fronta, paměť, teploty), notifikace jako dnes `notify.sh` | |
 
-## 8. Otevřená rozhodnutí
+## 8. Rozhodnuto 2026-10-01
 
-1. Okna podle §3b (comfy 07–13, director 13–19, llm 19–01, director 01–07)?
-2. Kindlify: zh.daodejing + zh.lunyu (101 kapitol, ~10–20 min) jednorázově na začátku nejbližšího director okna,
-   nebo nechat `library-chapters` jít abecedně (k nim se dostane za ~4–5 nocí)?
+1. Okna podle §3b — ano.
+2. Kindlify: zh.daodejing + zh.lunyu předřazeny (jednorázový `kindlify-zh` 15:13), pak `library-chapters`
+   abecedně; Kindlify průběžně přidává díla s hotovými kapitolami (export řeší session Kindlify).
+3. ComfyUI okno 07–13 je hlavně pro experimenty uživatele (Ol1nLLM appka, lab).
