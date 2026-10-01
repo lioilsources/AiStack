@@ -127,12 +127,14 @@ jako `openclaw-default`. OpenClaw gateway běží na hostu a volá `http://127.0
 - ~36 GB unified paměti (`AGENT_GPU_MEMORY_UTILIZATION=0.30`) — vLLM si je
   zabere při startu bez ohledu na zátěž a pod `util × total` volných odmítne
   nastartovat úplně.
-- **Běží jen v okně promo 00–01**, jinak ho `rag-schedule.sh`
-  (WorldLibraryProject, `AGENT_CONTAINERS`) zastaví. 121,7 GiB neuveze dva
-  velké modely: vedle directora (0.75 = 91 GiB) ani vedle ComfyUI (52 GiB) se
+- **Běží jen v profilu llm** (okno a profily: `PLAN-spark-scheduler.md` §3), jinak ho
+  `rag-schedule.sh` (WorldLibraryProject, `AGENT_CONTAINERS`) zastaví. 121,7 GiB neuveze
+  dva velké modely: vedle directora (0.75 = 91 GiB) ani vedle ComfyUI (52 GiB) se
   nevejde. Když v tom seznamu chyběl (11.–16. 9. 2026), director dvě noci po
   sobě nenaběhl a ComfyUI přes den počítalo na CPU. `restart: unless-stopped`
-  je schválně: ruční `docker stop` vydrží, restart stroje ne.
+  je schválně: ruční `docker stop` vydrží, restart stroje ne. Vypínat jen
+  `docker stop`, nikdy `make down-agent` (30. 9. 2026 kontejner smazal a promo
+  okno zůstalo bez modelu).
 - `make download-agent` → `make up-agent` → `curl localhost:8040/v1/models`.
 
 ## Porty (vše `127.0.0.1` pokud není uvedeno)
