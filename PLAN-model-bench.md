@@ -148,6 +148,27 @@ Nevejde se nikdy: director + ComfyUI; dva 36 GiB modely vedle ComfyUI; VL vedle 
 | gpt-oss-120b | | | | | | | | | | | | | | ~65 | 128k | ano | Apache-2.0 | | noc 2 |
 | **VL** Qwen2.5-VL-7B | – | – | – | – | – | – | Spearman vs člověk | | – | | | | | 20 | 32k | – | Apache-2.0 | | den |
 
+
+### 6a. Výsledky (2026-09-29 – 10-01, automatické skóre `bench/score.py`)
+
+| | director (swarm 0,60) | Gemma-4-31B | Llama-3.3-70B fp8 | Nano-30B | qwen36 | translate |
+|---|---|---|---|---|---|---|
+| A1 cituje jen dodané § | 72 % | **100 %** | **100 %** | **100 %** | 78 % | 83 % |
+| A1 zmíní očekávaný § | **67 %** | 56 % | 61 % | 56 % | **67 %** | 50 % |
+| A4 12k kontext | 100 % | 0 % (KV 9k při 0,30) | 100 % | 40 % | 100 % | 0 % (strop 16k) |
+| C2 schéma, všechna pole | **96 %** | 20 % | 60 % | 48 % | 48 % | 0 % |
+| C4 odolá injection | 20 % | **100 %** | 40 % | 80 % | 60 % | 60 % |
+| C1 agent draft / review | 83 / 80 % | **92 / 100 %** | 42 / 50 % | 8 / 70 % | 50 / 50 % | – (bez tools) |
+| C1 s/scénář | 161 | 278 | 658 | **28** | **20** | – |
+| B1 kontrakt / s na shader | 100 % / 67 | 100 % / 145 | – | 100 % / **12** | 100 % / 16 | 100 % / 62 |
+| tok/s 1× / 4× | 15 / 42 | 7 / – | 3 / 9 | 62 / 169 | **80 / 215** | 12 / 48 |
+
+**Doporučení (čeká na rozhodnutí uživatele):** Právník agent = **Gemma-4** (nejspolehlivější, jediná 100 % proti
+injection; ~35 GiB, pomalá → noční/dávkový agent nebo místo qwen36 v promo okně, nikdy souběžně s ComfyUI
+renderem). Rychlý chat bez nástrojů = qwen36. ShaderGen coder = Nano-30B (12 s/shader) do výsledků B2/B4.
+Llama-3.3 ne (3 tok/s, 43 chyb nástrojů). Nalezené chyby: agent Právníka posílal víc system zpráv (Qwen 400,
+opraveno `25c3d27`), Nano s util 0,15 nemá KV cache (bench/serve.sh nano 0,22).
+
 **Rozhodovací pravidla:**
 - Právník `law-chat` (bez nástrojů): A1(a) ≥ 90 %, A1 lidské ≥ 4/5, C4 ≥ 4/5 → jinak „nepouštět na produkci“ (plan-pravnik §9.3).
 - Právník agent: navíc C1 ≥ 80 % scénářů a 0 halucinovaných nástrojů → kandidáti jen s tools; **pokud vyhraje jen director nebo Llama, agent je noční**.
@@ -240,12 +261,12 @@ Rizika: Gemma-4 image nikdy neběžel (může padnout na flashinfer/GB10 — viz
 | # | Krok | Kdo | Stav |
 |---|---|---|---|
 | 0 | Souhlasy z §7.1 (audio, noc 1 swarm profil, noc 2 bez obohacení, glslang, hodnocení, vlny Labu) | uživatel | čeká |
-| 1 | `bench/` harness, sady, aliasy `bench-*`/`llama33`, `docker-compose.vl.yaml` | Claude | – |
+| 1 | `bench/` harness, sady, aliasy `bench-*`/`llama33`, `docker-compose.vl.yaml` | Claude | hotovo (větev `feat/model-bench`) |
 | 2 | Lab příprava bez GPU (§8.1) na `feat/lab-storyteller-characters` | Claude | – |
 | 3 | ToyShaders v2: Fáze 0 (tooling, `llm.py` s rolí `vision` pro `spark`, config → `:8080`) → Fáze 1–2 (harvest, RAG); B1/B5 na dnešním grafu hned | Claude (+ uživatel: Shadertoy klíč, Flutter 3.41, glslang, selfie) | – |
 | 4 | Den 1: qwen36 → translate → Nano+VL; Lab vlna A, B(8) | Claude + uživatel (vlny) | – |
 | 5 | Noc 1: director swarm profil; C1 | Claude | – |
 | 6 | Den 2: Gemma; Lab B zbytek, C, D, E | | – |
 | 7 | Noc 2: Llama-3.3-70B, gpt-oss | | – |
-| 8 | §6 vyplněná; rozhodnutí Právník (chat/agent), ShaderGen (model/VL), Lab tabulka | | – |
+| 8 | §6 vyplněná; rozhodnutí Právník (chat/agent), ShaderGen (model/VL), Lab tabulka | | §6a vyplněno, čeká rozhodnutí |
 | 9 | Navazující: `pravnik` merge + tunel; MirrorBooth `visual_ranker`; storyteller `models_styles.sql` + `ref2img` | | – |
