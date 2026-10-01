@@ -18,7 +18,10 @@ router_settings:
     # jeho čeština je měřitelně lepší (A/B na 30 chuncích: translate psal
     # „staroslovanský epos" o Beowulfovi, director „anglosaský"). Teprve když
     # neběží ani ten, přijde na řadu 4B nouzovka.
-    - translate: ["swarm-director", "fallback"]
+    # translate je od 2026-10-01 mimo rozvrh (PLAN-spark-scheduler.md): chat Knihovníka jde na
+    # qwen36 (okno llm 17–01), v noci na directora, jinak nouzový fallback
+    - translate: ["openclaw-default", "swarm-director", "fallback"]
+    - pravnik-agent: ["openclaw-default", "fallback"]
     - swarm-director: ["fallback"]
     - shop: ["fallback"]
 
@@ -155,6 +158,10 @@ model_list:
     litellm_params: {model: openai/gemma, api_base: "http://bench-gemma:8000/v1", api_key: dummy, timeout: 600, temperature: 0.2}
   - model_name: bench-llama33
     litellm_params: {model: openai/llama33, api_base: "http://bench-llama33:8000/v1", api_key: dummy, timeout: 1800, temperature: 0.2}
+  # Agent Právníka (rag/agent ve WorldLibraryProject): Gemma-4 na vyžádání
+  # (rag-schedule.sh gemma), jinak fallback na qwen36 — bench C1 92/100 %, injection 100 %.
+  - model_name: pravnik-agent
+    litellm_params: {model: openai/gemma, api_base: "http://bench-gemma:8000/v1", api_key: dummy, timeout: 900, temperature: 0.2}
   # VL soudce pro ShaderGen v2 (Fáze 5) — deploy/docker-compose.vl.yaml
   - model_name: vl
     litellm_params: {model: openai/vl, api_base: "http://vl:8000/v1", api_key: dummy, timeout: 300, temperature: 0.1}

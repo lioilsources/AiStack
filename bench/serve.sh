@@ -12,11 +12,13 @@ set -a; . ./.env; set +a
 
 case "${1:-}" in
   gemma)
-    scripts/mem-admit.sh bench-gemma 0.30
+    # GEMMA_UTIL: bench 0.30 (KV jen 9k tokenů); rag-schedule.sh gemma pouští 0.40 kvůli 12k+ kontextu
+    gu="${GEMMA_UTIL:-0.30}"; gl=16384; [ "$gu" != 0.30 ] && gl=32768
+    scripts/mem-admit.sh bench-gemma "$gu"
     docker run -d --name bench-gemma --network ai --gpus all --ipc host \
       -e HF_HUB_OFFLINE=1 -v "$CACHE_DEV/hub:/root/.cache/huggingface/hub:ro" \
       vllm/vllm-openai:gemma4-cu130 nvidia/Gemma-4-31B-IT-NVFP4 \
-      --served-model-name gemma --gpu-memory-utilization 0.30 --max-model-len 16384 --max-num-seqs 4 \
+      --served-model-name gemma --gpu-memory-utilization "$gu" --max-model-len "$gl" --max-num-seqs 4 \
       --enable-auto-tool-choice --tool-call-parser gemma4 --trust-remote-code
     ;;
   llama33)
