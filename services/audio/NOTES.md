@@ -131,8 +131,8 @@ poslech.
 
 ## Když model neběží
 
-`audio-music` je nahoře jen v denním režimu SPARKu (plánovač
-`WorldLibraryProject/deploy/spark/rag-schedule.sh`, 07:00–00:00). Mimo něj:
+`audio-music` je nahoře jen v profilu comfy SPARKu (plánovač
+`WorldLibraryProject/deploy/spark/rag-schedule.sh`, okna v `PLAN-spark-scheduler.md` §3). Mimo něj:
 
 - upload předlohy projde (je to jen ffmpeg),
 - `/vibe/analyze` a `/vibe/generate` vrátí hned `503` s `MODEL_DOWN` — ne job,
