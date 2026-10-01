@@ -1,0 +1,20 @@
+{"id": "a2-00", "kind": "pohadka", "age": 3, "prompt": "Převyprávěj pohádku O Budulínkovi pro tříleté dítě. Nejvýš 8 vět, jednoduchá slova, laskavý konec."}
+{"id": "a2-01", "kind": "pohadka", "age": 3, "prompt": "Vymysli krátkou pohádku na dobrou noc (6–8 vět) o ježkovi, který hledá svou čepici. Pro dítě kolem čtyř let."}
+{"id": "a2-02", "kind": "pohadka_zensky_rod", "age": 6, "prompt": "Napiš začátek pohádky (5 vět) o odvážné princezně Aničce, která se vydala sama do lesa. Hrdinka je dívka — dbej na ženský rod sloves a přídavných jmen."}
+{"id": "a2-03", "kind": "pohadka_zensky_rod", "age": 6, "prompt": "Popiš ve třech větách, co udělala malá čarodějka Bára, když jí uletělo koště. Piš v minulém čase, hrdinka je dívka."}
+{"id": "a2-04", "kind": "dialog_zensky_rod", "age": 6, "prompt": "Napiš krátký dialog (6 replik) mezi babičkou a vnučkou Klárou o tom, proč padá listí. Obě postavy jsou ženy — hlídej rod."}
+{"id": "a2-05", "kind": "shrnuti_zakona", "prompt": "Shrň do tří vět pro laika: „Ujednají-li strany, že nájemce dá pronajímateli peněžitou jistotu, že zaplatí nájemné a splní jiné povinnosti vyplývající z nájmu, nesmí být jistota vyšší než trojnásobek měsíčního nájemného.“"}
+{"id": "a2-06", "kind": "shrnuti_zakona", "prompt": "Vysvětli jednou až dvěma větami rozdíl mezi výpovědí a okamžitým zrušením pracovního poměru."}
+{"id": "a2-07", "kind": "urad", "prompt": "Napiš krátký zdvořilý e-mail na městský úřad s žádostí o prodloužení lhůty k doplnění žádosti o stavební povolení o 14 dní. Odesílatelka je Jana Nováková."}
+{"id": "a2-08", "kind": "urad", "prompt": "Napiš formální stížnost (nejvýš 6 vět) pronajímateli na nefunkční topení v bytě od 3. listopadu."}
+{"id": "a2-09", "kind": "cislovky", "prompt": "Napiš slovy (bez číslic): 21 kočkám, s 2 psy, o 3 dnech, 1 500 korun, 17. května 2026."}
+{"id": "a2-10", "kind": "sklonovani", "prompt": "Doplň správné tvary do vět a vypiš celé věty: (1) Šel jsem s (Petr a Pavel) do kina. (2) Bez (tvoje sestra) to nepůjde. (3) Mluvili jsme o (naši noví sousedé)."}
+{"id": "a2-11", "kind": "instrukce", "prompt": "Napiš návod v 5 očíslovaných krocích, jak zasadit tulipánové cibulky na podzim. Rozkazovací způsob, 2. osoba jednotného čísla."}
+{"id": "a2-12", "kind": "instrukce", "prompt": "Vysvětli dítěti (8 let) ve 4 větách, proč se měsíc na obloze mění."}
+{"id": "a2-13", "kind": "styl", "prompt": "Přepiš tuto větu třikrát: jednou úředně, jednou hovorově, jednou pro malé dítě: „Z důvodu výluky je linka 9 odkloněna.“"}
+{"id": "a2-14", "kind": "idiomy", "prompt": "Vysvětli význam a použij ve větě tato rčení: „mít máslo na hlavě“, „nosit dříví do lesa“, „chodit kolem horké kaše“."}
+{"id": "a2-15", "kind": "preklad_idiom", "prompt": "Přelož do přirozené češtiny (ne doslova): „It's raining cats and dogs, so let's call it a day.“"}
+{"id": "a2-16", "kind": "pohadka", "age": 6, "prompt": "Napiš pohádku (8–10 vět) o drakovi, který se bál tmy. Pro šestileté dítě, s trochou napětí, bez násilí."}
+{"id": "a2-17", "kind": "realie", "prompt": "Vyjmenuj tři české lidové pohádkové bytosti a u každé napiš jednou větou, čím je typická."}
+{"id": "a2-18", "kind": "vyjmenovana_slova", "prompt": "Napiš 4 věty, ve kterých správně použiješ slova: mlýn, myslivec, být, bít."}
+{"id": "a2-19", "kind": "zensky_rod", "prompt": "Napiš 4 věty v minulém čase o tom, co včera dělala lékařka Petra v nemocnici."}

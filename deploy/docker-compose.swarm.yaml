@@ -17,10 +17,12 @@ services:
     image: vllm/vllm-openai:${SWARM_VLLM_VERSION}
     container_name: swarm-nano
     restart: unless-stopped
+    # util 0.22 (≈27 GiB): s 0.15 od vLLM 0.21 (CUDA grafy v rozpočtu) nezbyla KV cache
+    # a kontejner padal na „No available memory for the cache blocks“ (2026-09-30).
     command: >
       ${HF_MODEL_SWARM_NANO}
       --served-model-name swarm-nano
-      --gpu-memory-utilization 0.15
+      --gpu-memory-utilization 0.22
       --max-model-len 32768
       --max-num-seqs 4
       --enable-auto-tool-choice
@@ -270,6 +272,45 @@ services:
 
   # ── Vector store: ChromaDB — běží na NASu (deploy/docker-compose.swarm.nas.yaml)
   # Adresa: ${CHROMADB_URL}  →  http://192.168.88.88:8006
+
+  # ── Evaluator: deterministic GLSL compile / static / EGL runtime scoring ────
+  # Source: AiSwarmBattle/evaluator (Go + glslang + headless EGL). No LLM.
+  # GPU via NVIDIA EGL (graphics capability); falls back to Mesa llvmpipe,
+  # which is flagged software_renderer=true and never fails the perf gate.
+  # Small footprint (no model weights), safe next to ComfyUI windows.
+  # Called directly (not via LiteLLM) by the mirrorbooth_retrieval pipeline
+  # as EVALUATOR_URL=http://dgx-spark:8081 — hence bound on all interfaces.
+  swarm-evaluator:
+    build:
+      context: ../../AiSwarmBattle
+      dockerfile: evaluator/Dockerfile
+    image: swarm-evaluator:latest
+    container_name: swarm-evaluator
+    restart: unless-stopped
+    profiles:
+      - evaluator
+    environment:
+      - EVALUATOR_ADDR=:8081
+      - EVALUATOR_EGL=auto
+      - EVALUATOR_RUNTIME_BUDGET_MS=8000
+      - NVIDIA_DRIVER_CAPABILITIES=graphics,utility
+    ports:
+      - "8081:8081"
+    networks:
+      - internal
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu, graphics]
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8081/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
 
   # ── LiteLLM gateway for swarm models ──────────────────────────────────────
   swarm-litellm:
