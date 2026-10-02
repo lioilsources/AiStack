@@ -1,10 +1,17 @@
 # =============================================================================
-# Audio — generování hudby a SFX open-source modely (náhrada ElevenLabs)
+# Audio — hudba, SFX a řeč (TTS) open-source modely (náhrada ElevenLabs)
 # =============================================================================
 #
-#   audio        orchestrátor (fronta, ffmpeg post-proc, SQLite)  :8093
-#   audio-music  ACE-Step 1.5 REST API                            :8094 → 8001
-#   audio-sfx    MOSS-SoundEffect / Stable Audio Open wrapper      :8095 → 8002
+#   audio                 orchestrátor (fronta, ffmpeg post-proc, SQLite)  :8093
+#   audio-music           ACE-Step 1.5 REST API                            :8094 → 8001
+#   audio-sfx             MOSS-SoundEffect / Stable Audio Open wrapper      :8095 → 8002
+#   audio-tts             Kokoro-82M + Piper, CPU (profil tts)             :8102 → 8003
+#   audio-tts-xtts        XTTS-v2, GPU, NEKOMERČNÍ (profil tts-gpu)        :8103 → 8004
+#   audio-tts-chatterbox  Chatterbox Multilingual, GPU (profil tts-gpu)    :8104 → 8005
+#
+# TTS kontejnery mají compose profily, aby `make up-audio` a `make build-audio`
+# dělaly totéž co před nimi. Kontejner jmenovaný na příkazové řádce
+# (`compose up -d audio-tts`) compose spustí i s neaktivním profilem.
 #
 # Modelové kontejnery drží GPU paměť, orchestrátor ne — proto jsou oddělené:
 # controller je smí shodit (`/ctrl/deactivate?model=audio-music`), aniž by
@@ -29,6 +36,12 @@ services:
       - AUDIO_DB_PATH=/data/audio/jobs.db
       - AUDIO_MUSIC_URL=${AUDIO_MUSIC_URL:-http://audio-music:8001}
       - AUDIO_SFX_URL=${AUDIO_SFX_URL:-http://audio-sfx:8002}
+      - AUDIO_TTS_URL=${AUDIO_TTS_URL:-http://audio-tts:8003}
+      - AUDIO_TTS_XTTS_URL=${AUDIO_TTS_XTTS_URL:-http://audio-tts-xtts:8004}
+      - AUDIO_TTS_CHATTERBOX_URL=${AUDIO_TTS_CHATTERBOX_URL:-http://audio-tts-chatterbox:8005}
+      - AUDIO_TTS_TIMEOUT_S=${AUDIO_TTS_TIMEOUT_S:-600}
+      - AUDIO_TTS_LUFS=${AUDIO_TTS_LUFS:--16}
+      - AUDIO_TTS_SAMPLE_RATE=${AUDIO_TTS_SAMPLE_RATE:-48000}
       - AUDIO_MUSIC_MODEL=${AUDIO_MUSIC_MODEL:-acestep-v15-turbo}
       - AUDIO_SFX_MODEL=${AUDIO_SFX_MODEL:-moss-soundeffect-v2}
       - AUDIO_MUSIC_TIMEOUT_S=${AUDIO_MUSIC_TIMEOUT_S:-900}
@@ -117,6 +130,105 @@ services:
     ports:
       - "127.0.0.1:8095:8002"
     shm_size: "2gb"
+    networks:
+      - internal
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+  # ─────────────────────────────────────────────
+  # TTS na CPU — Kokoro-82M (Apache-2.0, EN) + Piper (čeština, licence podle
+  # hlasu). Bez GPU, ~1 GiB RAM, smí běžet v každém profilu SPARKu.
+  # ─────────────────────────────────────────────
+  audio-tts:
+    build:
+      context: ../services/audio
+      dockerfile: runtime/Dockerfile.tts-cpu
+    image: aistack/audio-tts:latest
+    container_name: audio-tts
+    restart: unless-stopped
+    profiles: [tts]
+    environment:
+      - TTS_MODELS_DIR=/models
+      - TTS_PORT=8003
+      - TTS_CPU_THREADS=${AUDIO_TTS_CPU_THREADS:-4}
+      - KOKORO_ONNX=${AUDIO_TTS_KOKORO_ONNX:-onnx/model.onnx}
+      - TTS_PRELOAD=${AUDIO_TTS_PRELOAD:-kokoro-82m,piper-cs-kasandra-medium}
+    volumes:
+      - ${AUDIO_MODELS_PATH:-/home/ol1n/dev/audio/models}:/models:ro
+    ports:
+      - "127.0.0.1:8102:8003"
+    # Strop pro jistotu: naměřeno ~1 GiB s Kokorem a jedním Piper hlasem.
+    mem_limit: 3g
+    cpus: 6
+    networks:
+      - internal
+
+  # ─────────────────────────────────────────────
+  # XTTS-v2 — Coqui Public Model License, NEKOMERČNÍ. Jen na pokusy;
+  # orchestrátor ho bez commercial_only=false nepoužije.
+  # ─────────────────────────────────────────────
+  audio-tts-xtts:
+    build:
+      context: ../services/audio
+      dockerfile: runtime/Dockerfile.tts-xtts
+    image: aistack/audio-tts-xtts:latest
+    container_name: audio-tts-xtts
+    # Ne unless-stopped: po restartu stroje se nemá sám zvednout do profilu,
+    # kde na něj nezbývá paměť (director). Spouští se ručně / controllerem.
+    restart: "no"
+    profiles: [tts-gpu]
+    environment:
+      - TTS_ENGINE=xtts
+      - TTS_MODELS_DIR=/models
+      - TTS_PORT=8004
+      - TTS_PRELOAD=${AUDIO_TTS_GPU_PRELOAD:-false}
+      - TTS_IDLE_UNLOAD_S=${AUDIO_TTS_IDLE_UNLOAD_S:-900}
+    volumes:
+      - ${AUDIO_MODELS_PATH:-/home/ol1n/dev/audio/models}:/models:ro
+    ports:
+      - "127.0.0.1:8103:8004"
+    shm_size: "1gb"
+    networks:
+      - internal
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+  # ─────────────────────────────────────────────
+  # Chatterbox Multilingual — MIT, klonování hlasu, 23 jazyků (bez češtiny),
+  # výstup nese vodoznak Resemble Perth. Volitelně český T3 (chatterbox-cs,
+  # licenčně nejasný → nekomerční).
+  # ─────────────────────────────────────────────
+  audio-tts-chatterbox:
+    build:
+      context: ../services/audio
+      dockerfile: runtime/Dockerfile.tts-chatterbox
+    image: aistack/audio-tts-chatterbox:latest
+    container_name: audio-tts-chatterbox
+    restart: "no"
+    profiles: [tts-gpu]
+    environment:
+      - TTS_ENGINE=chatterbox
+      - TTS_MODELS_DIR=/models
+      - TTS_PORT=8005
+      - TTS_PRELOAD=${AUDIO_TTS_GPU_PRELOAD:-false}
+      - TTS_IDLE_UNLOAD_S=${AUDIO_TTS_IDLE_UNLOAD_S:-900}
+      - CHATTERBOX_T3=${AUDIO_TTS_CHATTERBOX_T3:-t3_mtl23ls_v3.safetensors}
+      - CHATTERBOX_CS_LANG_ID=${AUDIO_TTS_CHATTERBOX_CS_LANG_ID:-}
+    volumes:
+      - ${AUDIO_MODELS_PATH:-/home/ol1n/dev/audio/models}:/models:ro
+    ports:
+      - "127.0.0.1:8104:8005"
+    shm_size: "1gb"
     networks:
       - internal
     deploy:

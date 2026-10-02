@@ -63,8 +63,8 @@ def test_health_reports_idle_time_per_kind(client):
     """Controller potřebuje vědět, jak dlouho se negeneruje, než shodí model."""
     payload = client.get("/health").json()
     assert payload["status"] == "ok"
-    assert sorted(payload["backends"]) == ["music", "sfx"]
-    assert set(payload["idle_s"]) == {"music", "sfx"}
+    assert sorted(payload["backends"]) == ["music", "sfx", "tts"]
+    assert set(payload["idle_s"]) == {"music", "sfx", "tts-cpu", "tts-gpu"}
     # Před prvním jobem None, ne Infinity — to by nebyl platný JSON.
     assert payload["idle_s"]["music"] is None
     assert "Infinity" not in client.get("/health").text
@@ -75,8 +75,9 @@ def test_models_carry_license(client):
     names = {m["name"] for m in models}
     assert "acestep-v15-turbo" in names
     assert "moss-soundeffect-v2" in names
-    # Nekomerční model se do katalogu nesmí dostat — hra jde na Steam.
-    assert all(m["commercial"] for m in models)
+    # Nekomerční hudba ani SFX se do katalogu nesmí dostat — hra jde na Steam.
+    # (TTS vede i nekomerční XTTS-v2, ale označený — test_tts.py.)
+    assert all(m["commercial"] for m in models if m["kind"] in ("music", "sfx"))
     acestep = next(m for m in models if m["name"] == "acestep-v15-turbo")
     assert acestep["license"] == "MIT"
     assert acestep["loaded"] is True
