@@ -203,3 +203,47 @@ func errorsAs(err error, target **APIError) bool {
 	}
 	return false
 }
+
+func TestGenerateSpeechLeavesCommercialOnlyToServer(t *testing.T) {
+	var raw map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/audio/tts" {
+			t.Errorf("path = %q", r.URL.Path)
+		}
+		json.NewDecoder(r.Body).Decode(&raw) //nolint:errcheck
+		w.WriteHeader(http.StatusAccepted)
+		json.NewEncoder(w).Encode(map[string]any{"job_id": "t1", "queue_position": 1}) //nolint:errcheck
+	}))
+	defer srv.Close()
+
+	job, err := New(srv.URL).GenerateSpeech(context.Background(), TTSSpec{Text: "Ahoj", Language: "cs"})
+	if err != nil || job.JobID != "t1" {
+		t.Fatalf("GenerateSpeech: %v %+v", err, job)
+	}
+	// Bez commercial_only v requestu platí výchozí true na straně služby.
+	if _, ok := raw["commercial_only"]; ok {
+		t.Errorf("commercial_only se nemá posílat, když je nil: %v", raw)
+	}
+	off := false
+	New(srv.URL).GenerateSpeech(context.Background(), TTSSpec{Text: "x", CommercialOnly: &off}) //nolint:errcheck
+	if v, ok := raw["commercial_only"]; !ok || v != false {
+		t.Errorf("commercial_only = %v, want false", raw["commercial_only"])
+	}
+}
+
+func TestVoicesSendsFilters(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got := r.URL.Query(); got.Get("language") != "cs" || got.Get("commercial") != "true" || got.Has("engine") {
+			t.Errorf("query = %v", got)
+		}
+		json.NewEncoder(w).Encode([]Voice{{ID: "piper:cs_CZ-kasandra-medium", Commercial: true, //nolint:errcheck
+			Attribution: "Hlas Kasandra © Ondřej Šimek, CC BY 4.0"}})
+	}))
+	defer srv.Close()
+
+	yes := true
+	voices, err := New(srv.URL).Voices(context.Background(), "", "cs", &yes)
+	if err != nil || len(voices) != 1 || voices[0].Attribution == "" {
+		t.Fatalf("Voices: %v %+v", err, voices)
+	}
+}
