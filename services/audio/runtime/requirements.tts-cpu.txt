@@ -1,0 +1,15 @@
+# Závislosti kontejneru audio-tts (Kokoro + Piper na CPU). Bez torch —
+# oba enginy jsou ONNX, image má pod 1 GB a builduje se v minutách.
+kokoro-onnx==0.6.1
+# piper1-gpl (OHF-Voice) — kód je GPL-3.0, na vygenerované audio se
+# nevztahuje; kontejner se nedistribuuje, jen provozuje.
+piper-tts==1.8.0
+onnxruntime==1.23.2
+numpy==2.2.6
+soundfile==0.13.1
+
+# Wrapper.
+fastapi==0.118.0
+uvicorn[standard]==0.37.0
+pydantic==2.11.7
+python-multipart==0.0.20

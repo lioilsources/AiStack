@@ -1,5 +1,5 @@
 // Package audioclient je Go klient pro AiStack services/audio — generování
-// hudby a SFX lokálními modely.
+// hudby, SFX a řeči (TTS) lokálními modely.
 //
 // Klient záměrně nezná jména modelů. Volající popíše, co chce slyšet; který
 // model to vyrobí, rozhoduje služba. To je celý smysl téhle vrstvy: až se
@@ -80,6 +80,45 @@ type SFXSpec struct {
 	Model       string  `json:"model,omitempty"`
 }
 
+// TTSSpec popisuje repliku. Prázdný Engine/Voice = služba vybere podle jazyka
+// (en → Kokoro, cs → Piper Kasandra). Voice může být preset ("am_puck",
+// "cs_CZ-kasandra-medium"), vestavěný hlas s prefixem ("xtts:Ana Florence")
+// nebo id uloženého hlasu postavy (POST /v1/audio/voices).
+type TTSSpec struct {
+	Text     string `json:"text"`
+	Language string `json:"language,omitempty"`
+	Voice    string `json:"voice,omitempty"`
+	Engine   string `json:"engine,omitempty"`
+	Model    string `json:"model,omitempty"`
+	// nil = výchozí služby (true): nekomerční a licenčně neověřené modely
+	// (XTTS-v2, Piper Jirka, chatterbox-cs) služba odmítne s 403. Jen na pokusy
+	// nastav false.
+	CommercialOnly *bool          `json:"commercial_only,omitempty"`
+	Speed          float64        `json:"speed,omitempty"`
+	Seed           *int64         `json:"seed,omitempty"`
+	Variations     int            `json:"variations,omitempty"`
+	Format         string         `json:"format,omitempty"`
+	Params         map[string]any `json:"params,omitempty"`
+}
+
+// Voice je položka katalogu hlasů včetně licence.
+type Voice struct {
+	ID            string   `json:"id"`
+	Engine        string   `json:"engine"`
+	Model         string   `json:"model"`
+	Type          string   `json:"type"` // preset | builtin | custom
+	Language      string   `json:"language"`
+	Languages     []string `json:"languages"`
+	Gender        string   `json:"gender"`
+	Grade         string   `json:"grade"`
+	License       string   `json:"license"`
+	Commercial    bool     `json:"commercial"`
+	LicenseStatus string   `json:"license_status"`
+	Attribution   string   `json:"attribution"`
+	Watermark     bool     `json:"watermark"`
+	Note          string   `json:"note"`
+}
+
 // Output je jeden hotový soubor.
 type Output struct {
 	URL          string  `json:"url"`
@@ -101,6 +140,9 @@ type Job struct {
 	QueuePosition *int     `json:"queue_position"`
 	Error         string   `json:"error"`
 	Outputs       []Output `json:"outputs"`
+	Task          string   `json:"task,omitempty"`
+	// Manifest (TTS: licence, uvedení autora, hlas) — tvar podle Task.
+	Result json.RawMessage `json:"result,omitempty"`
 }
 
 // Model je položka katalogu včetně licence — Steam build musí vědět,
@@ -117,6 +159,12 @@ type Model struct {
 	Available  bool   `json:"available"`
 	Loaded     bool   `json:"loaded"`
 	Detail     string `json:"detail"`
+	// Jen TTS.
+	LicenseStatus string   `json:"license_status,omitempty"`
+	Attribution   string   `json:"attribution,omitempty"`
+	Languages     []string `json:"languages,omitempty"`
+	Cloning       bool     `json:"cloning,omitempty"`
+	Watermark     bool     `json:"watermark,omitempty"`
 }
 
 // APIError je chyba vrácená službou.
@@ -137,6 +185,34 @@ func (c *Client) GenerateMusic(ctx context.Context, spec MusicSpec) (Job, error)
 // GenerateSFX zařadí SFX job do fronty a vrátí ho ve stavu queued.
 func (c *Client) GenerateSFX(ctx context.Context, spec SFXSpec) (Job, error) {
 	return c.submit(ctx, "/v1/audio/sfx", spec)
+}
+
+// GenerateSpeech zařadí TTS job do fronty. 503 = engine teď neběží (GPU
+// enginy jedou jen v některých profilech SPARKu), 403 = licence.
+func (c *Client) GenerateSpeech(ctx context.Context, spec TTSSpec) (Job, error) {
+	return c.submit(ctx, "/v1/audio/tts", spec)
+}
+
+// Voices vrátí katalog hlasů; prázdné filtry se neposílají.
+// commercial=nil znamená bez filtru.
+func (c *Client) Voices(ctx context.Context, engine, language string, commercial *bool) ([]Voice, error) {
+	q := url.Values{}
+	if engine != "" {
+		q.Set("engine", engine)
+	}
+	if language != "" {
+		q.Set("language", language)
+	}
+	if commercial != nil {
+		q.Set("commercial", fmt.Sprint(*commercial))
+	}
+	path := "/v1/audio/voices"
+	if len(q) > 0 {
+		path += "?" + q.Encode()
+	}
+	var voices []Voice
+	err := c.do(ctx, http.MethodGet, path, nil, &voices)
+	return voices, err
 }
 
 func (c *Client) submit(ctx context.Context, path string, spec any) (Job, error) {

@@ -1,0 +1,71 @@
+# =============================================================================
+# audio-tts-xtts — XTTS-v2 (coqui-tts) na GB10 (sm_121)
+# =============================================================================
+#
+# !! Váhy XTTS-v2 jsou pod Coqui Public Model License — NEKOMERČNÍ. Kontejner
+# !! slouží jen k pokusům a porovnání; orchestrátor ho bez commercial_only=false
+# !! nepoužije (services/audio/LICENSES.md).
+#
+# Základ je stejný jako audio-sfx: CUDA 13 runtime + torch 2.10 cu130 (jediný
+# build s kernely pro sm_121) + LD_LIBRARY_PATH na pip knihovny.
+#
+# Build (na SPARKu, jen v bezpečném okně — PLAN-spark-scheduler.md):
+#   docker build -f runtime/Dockerfile.tts-xtts -t aistack/audio-tts-xtts:latest .
+#
+# =============================================================================
+
+ARG CUDA_TAG=13.0.1-runtime-ubuntu24.04
+FROM nvidia/cuda:${CUDA_TAG}
+
+ENV DEBIAN_FRONTEND=noninteractive \
+    LANG=C.UTF-8 \
+    PYTHONUNBUFFERED=1
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        git curl ca-certificates build-essential \
+        python3.12 python3.12-dev python3.12-venv \
+        libsndfile1 \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN python3.12 -m venv /opt/venv
+ENV PATH=/opt/venv/bin:$PATH
+RUN pip install --no-cache-dir --upgrade pip setuptools wheel
+
+RUN pip install --no-cache-dir \
+        --extra-index-url https://download.pytorch.org/whl/cu130 \
+        torch==2.10.0+cu130 torchaudio==2.10.0+cu130
+
+# ==================== CUDA knihovny: pip před systémem ====================
+# Viz Dockerfile.sfx — bez tohohle vyhraje systémový libcublas a i triviální
+# matmul skončí na CUBLAS_STATUS_INVALID_VALUE.
+ENV NV_PIP_LIBS=/opt/venv/lib/python3.12/site-packages/nvidia
+ENV LD_LIBRARY_PATH=${NV_PIP_LIBS}/cu13/lib:${NV_PIP_LIBS}/cudnn/lib:${NV_PIP_LIBS}/nccl/lib:${NV_PIP_LIBS}/cusparselt/lib:${LD_LIBRARY_PATH}
+RUN test -f "${NV_PIP_LIBS}/cu13/lib/libcublas.so.13" \
+    || (echo "CHYBA: torch nenainstaloval nvidia/cu13 knihovny — zkontroluj index cu130" && exit 1)
+
+COPY runtime/requirements.tts-xtts.txt runtime/constraints.tts-gpu.txt /tmp/
+RUN pip install --no-cache-dir \
+        --extra-index-url https://download.pytorch.org/whl/cu130 \
+        -c /tmp/constraints.tts-gpu.txt -r /tmp/requirements.tts-xtts.txt \
+    && python3 -c "import torch; assert torch.__version__.startswith('2.10'), torch.__version__" \
+    && python3 -c "from TTS.tts.models.xtts import Xtts; print('coqui-tts OK')"
+
+COPY runtime/tts_gpu_server.py /srv/tts_gpu_server.py
+WORKDIR /srv
+
+# COQUI_TOS_AGREED jen umlčí interaktivní dotaz downloaderu coqui-tts; váhy se
+# tu nestahují (HF_HUB_OFFLINE), licenci řeší LICENSES.md a katalog.
+ENV TTS_ENGINE=xtts \
+    TTS_MODELS_DIR=/models \
+    TTS_PORT=8004 \
+    TTS_IDLE_UNLOAD_S=900 \
+    COQUI_TOS_AGREED=1 \
+    HF_HUB_OFFLINE=1 \
+    TOKENIZERS_PARALLELISM=false \
+    TORCHDYNAMO_DISABLE=1
+
+EXPOSE 8004
+HEALTHCHECK --interval=30s --timeout=10s --retries=3 --start-period=120s \
+    CMD curl -sf http://localhost:8004/health || exit 1
+
+CMD ["python3", "tts_gpu_server.py"]

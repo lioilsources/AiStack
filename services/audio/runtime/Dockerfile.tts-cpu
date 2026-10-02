@@ -1,0 +1,42 @@
+# =============================================================================
+# audio-tts — Kokoro-82M + Piper na CPU (onnxruntime), bez GPU
+# =============================================================================
+#
+# Oba enginy jsou ONNX a mají aarch64 wheely na PyPI (piper-tts veze vlastní
+# espeak-ng, kokoro-onnx ho bere z espeakng-loader). Žádný torch ani CUDA, takže
+# image je malý, builduje se v minutách a kontejner smí běžet v každém profilu
+# SPARKu — nedrží GPU paměť.
+#
+# Build (na SPARKu, nebo kdekoli na linux/arm64 — i Docker Desktop na Macu):
+#   docker build -f runtime/Dockerfile.tts-cpu -t aistack/audio-tts:latest .
+#
+# =============================================================================
+
+FROM python:3.12-slim
+
+ENV DEBIAN_FRONTEND=noninteractive \
+    LANG=C.UTF-8 \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1
+
+RUN apt-get update && apt-get install -y --no-install-recommends curl \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY runtime/requirements.tts-cpu.txt /tmp/
+RUN pip install -r /tmp/requirements.tts-cpu.txt \
+    && python3 -c "import kokoro_onnx, piper, onnxruntime; print('tts-cpu OK', onnxruntime.__version__)"
+
+COPY runtime/tts_cpu_server.py /srv/tts_cpu_server.py
+WORKDIR /srv
+
+# TTS_CPU_THREADS = vlákna onnxruntime na jednu inferenci (Kokoro i Piper).
+ENV TTS_MODELS_DIR=/models \
+    TTS_PORT=8003 \
+    TTS_CPU_THREADS=4 \
+    HF_HUB_OFFLINE=1
+
+EXPOSE 8003
+HEALTHCHECK --interval=30s --timeout=10s --retries=3 --start-period=60s \
+    CMD curl -sf http://localhost:8003/health || exit 1
+
+CMD ["python3", "tts_cpu_server.py"]

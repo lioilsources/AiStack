@@ -1,0 +1,9 @@
+# Společné piny GPU TTS kontejnerů (audio-tts-xtts, audio-tts-chatterbox).
+# torch je jediná věc, kterou nesmí žádná tranzitivní závislost přepsat:
+# jen cu130 aarch64 build má kernely pro sm_121. coqui-tts-trainer,
+# s3tokenizer i conformer na torch závisí bez pinu, takže by jinak bez
+# varování stáhly jiný wheel.
+torch==2.10.0+cu130
+torchaudio==2.10.0+cu130
+# Chatterbox upstream chce numpy<2; coqui-tts snese obojí a numba s 1.26 jede.
+numpy==1.26.4

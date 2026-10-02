@@ -1,4 +1,4 @@
-"""services/audio — provider-agnostické API pro generování hudby a SFX.
+"""services/audio — provider-agnostické API pro generování hudby, SFX a řeči (TTS).
 
 Kirian ani jiný klient nesmí vědět, že pod tím jede ACE-Step nebo MOSS. Proto
 tady žije jen fronta, post-processing a katalog licencí; modely běží ve svých
@@ -15,14 +15,15 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
 
-from fastapi import Depends, FastAPI, File, Header, HTTPException, Response, UploadFile
+from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, Query, Response, UploadFile
 from fastapi.responses import FileResponse, JSONResponse
 
-from .backends import AceStepBackend, Backend, BackendError, GenSpec, SfxHTTPBackend
+from .backends import AceStepBackend, Backend, BackendError, GenSpec, SfxHTTPBackend, TtsHTTPBackend, TtsSpec
 from .backends.base import MODEL_DOWN
-from .catalog import CATALOG, EXCLUDED, by_kind
+from .backends.ttshttp import tts_down_message
+from .catalog import CATALOG, EXCLUDED, ModelSpec, by_kind
 from .config import Config
-from .jobs import Job, Runner, make_spec_from_request
+from .jobs import LANES, Job, Runner, make_spec_from_request
 from .postproc import set_ogg_quality
 from .schemas import (
     JobAccepted,
@@ -32,10 +33,18 @@ from .schemas import (
     Output,
     SampleOut,
     SfxRequest,
+    StoredVoiceOut,
+    TtsRequest,
     VibeAnalyzeRequest,
     VibeRequest,
+    VoiceInfo,
 )
 from .store import Store
+from .tts import presets as tts_presets
+from .tts.resolve import ResolveError, TtsPlan
+from .tts.resolve import resolve as resolve_tts
+from .tts.voicestore import MAX_UPLOAD_BYTES as VOICE_MAX_BYTES
+from .tts.voicestore import VoiceError, VoiceStore
 from .vibe.analyze import warm_up
 from .vibe.generate import build_spec, resolve
 from .vibe.sample import MAX_UPLOAD_BYTES, SampleError, SampleStore
@@ -54,18 +63,24 @@ CONFIG: Config = Config()
 store: Store = None  # type: ignore[assignment]  # nastaví lifespan
 runner: Runner = None  # type: ignore[assignment]  # nastaví lifespan
 samples: SampleStore = None  # type: ignore[assignment]  # nastaví lifespan
+voices: VoiceStore = None  # type: ignore[assignment]  # nastaví lifespan
 backends: dict[str, Backend] = {}
+
+
+def _url(value: str) -> str:
+    return "" if value.strip().lower() in ("off", "-", "none") else value
 
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
-    global CONFIG, store, runner, samples
+    global CONFIG, store, runner, samples, voices
     CONFIG = Config()
     set_ogg_quality(CONFIG.ogg_quality)
     Path(CONFIG.data_dir).mkdir(parents=True, exist_ok=True)
 
     store = Store(CONFIG.db_path)
     samples = SampleStore(Path(CONFIG.data_dir) / "vibe-samples")
+    voices = VoiceStore(Path(CONFIG.data_dir) / "tts-voices")
     backends.clear()
     if CONFIG.music_url:
         backends["music"] = AceStepBackend(
@@ -75,6 +90,14 @@ async def lifespan(_: FastAPI):
         backends["sfx"] = SfxHTTPBackend(
             CONFIG.sfx_url, CONFIG.sfx_model, CONFIG.sfx_timeout_s
         )
+    tts_urls = {
+        "kokoro": _url(CONFIG.tts_cpu_url),
+        "piper": _url(CONFIG.tts_cpu_url),
+        "xtts": _url(CONFIG.tts_xtts_url),
+        "chatterbox": _url(CONFIG.tts_chatterbox_url),
+    }
+    if any(tts_urls.values()):
+        backends["tts"] = TtsHTTPBackend(tts_urls, CONFIG.tts_timeout_s)
 
     orphans = store.requeue_orphans()
     if orphans:
@@ -85,7 +108,11 @@ async def lifespan(_: FastAPI):
     # První volání librosy stojí ~14 s (import + JIT numby) — ať je nezaplatí
     # první analýza, která na ně čeká uživatel v telefonu.
     threading.Thread(target=warm_up, name="vibe-warmup", daemon=True).start()
-    log.info("audio ready — music=%s sfx=%s", CONFIG.music_url or "-", CONFIG.sfx_url or "-")
+    log.info(
+        "audio ready — music=%s sfx=%s tts=%s",
+        CONFIG.music_url or "-", CONFIG.sfx_url or "-",
+        {e: u or "-" for e, u in tts_urls.items()},
+    )
 
     yield
 
@@ -132,38 +159,81 @@ def health() -> dict[str, Any]:
         "status": "ok",
         "service": "audio",
         "backends": sorted(backends),
-        "idle_s": {kind: _round_or_none(runner.idle_seconds(kind)) for kind in ("music", "sfx")}
+        "idle_s": {lane: _round_or_none(runner.idle_seconds(lane)) for lane in LANES}
         if runner is not None
         else {},
     }
 
 
+def _model_info(spec: ModelSpec, *, available: bool, loaded: bool, detail: str) -> ModelInfo:
+    return ModelInfo(
+        name=spec.name,
+        kind=spec.kind,
+        backend=spec.backend,
+        license=spec.license,
+        license_url=spec.license_url,
+        commercial=spec.commercial,
+        note=spec.note,
+        upstream=spec.repo,
+        available=available,
+        loaded=loaded,
+        detail=detail,
+        license_status=spec.license_status,
+        attribution=spec.attribution,
+        languages=list(spec.languages),
+        cloning=spec.cloning,
+        watermark=spec.watermark,
+    )
+
+
 @app.get("/v1/audio/models", response_model=list[ModelInfo])
-def list_models(_: None = Depends(require_key)) -> list[ModelInfo]:
+def list_models(
+    kind: str | None = Query(default=None, pattern="^(music|sfx|tts)$"),
+    commercial: bool | None = None,
+    _: None = Depends(require_key),
+) -> list[ModelInfo]:
+    """Katalog s licencemi. `?commercial=true` vrátí jen komerčně použitelné modely."""
     infos: list[ModelInfo] = []
-    for kind in ("music", "sfx"):
-        backend = backends.get(kind)
+    for k in ("music", "sfx"):
+        if kind and kind != k:
+            continue
+        backend = backends.get(k)
         backend_ok, detail = backend.health() if backend else (False, "backend není nakonfigurován")
         loaded = set(backend.loaded_models()) if backend and backend_ok else set()
-        for spec in by_kind(kind):
+        for spec in by_kind(k):
             served_detail = detail
             if not spec.served:
                 served_detail = "žádný runtime tenhle model neobsluhuje — viz poznámka"
-            infos.append(
-                ModelInfo(
-                    name=spec.name,
-                    kind=spec.kind,
-                    backend=spec.backend,
-                    license=spec.license,
-                    license_url=spec.license_url,
-                    commercial=spec.commercial,
-                    note=spec.note,
-                    upstream=spec.repo,
-                    available=backend_ok and spec.served,
-                    loaded=spec.name in loaded,
-                    detail=served_detail,
-                )
-            )
+            infos.append(_model_info(
+                spec, available=backend_ok and spec.served, loaded=spec.name in loaded, detail=served_detail,
+            ))
+    if kind in (None, "tts"):
+        infos += _tts_model_infos()
+    if commercial is not None:
+        infos = [m for m in infos if m.commercial == commercial]
+    return infos
+
+
+def _tts_model_infos() -> list[ModelInfo]:
+    backend: TtsHTTPBackend | None = backends.get("tts")  # type: ignore[assignment]
+    state: dict[str, tuple[bool, str, dict[str, list[str]]]] = {}
+    infos = []
+    for spec in by_kind("tts"):
+        engine = spec.backend
+        if engine not in state:
+            if backend is None:
+                state[engine] = (False, "TTS backend není nakonfigurován", {"available": [], "loaded": []})
+            else:
+                ok, detail = backend.engine_health(engine)
+                models = backend.engine_models(engine) if ok else {"available": [], "loaded": []}
+                state[engine] = (ok, detail, models)
+        ok, detail, models = state[engine]
+        has_weights = spec.name in models["available"]
+        if ok and not has_weights:
+            detail = "runtime běží, ale váhy nejsou stažené — make download-audio-tts"
+        infos.append(_model_info(
+            spec, available=ok and has_weights, loaded=spec.name in models["loaded"], detail=detail,
+        ))
     return infos
 
 
@@ -195,7 +265,10 @@ def _model_action(name: str, action: str) -> dict[str, str]:
             detail=f"backend {spec.backend} neumí {action} za běhu — použij controller (/ctrl)",
         )
     try:
-        fn(name)
+        if spec.kind == "tts":
+            fn(name, spec.backend)
+        else:
+            fn(name)
     except BackendError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
     return {"model": name, "action": action, "status": "ok"}
@@ -398,6 +471,280 @@ def vibe_generate(req: VibeRequest, _: None = Depends(require_key)) -> JobAccept
         )
     )
     return JobAccepted(job_id=job_id, queue_position=position)
+
+
+# --- TTS (převod textu na řeč) ---
+# MemeShorts: EN + CZ, jeden hlas na postavu, monetizované shorty. Proto je
+# `commercial_only` ve výchozím stavu zapnuté a každý job nese v manifestu
+# licenci, uvedení autora (CC BY) a jestli výstup nese vodoznak.
+
+
+def _tts_backend() -> TtsHTTPBackend:
+    backend = backends.get("tts")
+    if backend is None:
+        raise HTTPException(status_code=503, detail="TTS backend není nakonfigurován")
+    return backend  # type: ignore[return-value]
+
+
+def _plan_tts(req: TtsRequest) -> TtsPlan:
+    try:
+        return resolve_tts(
+            language=req.language, voice=req.voice, engine=req.engine, model=req.model,
+            commercial_only=req.commercial_only, voices=voices,
+        )
+    except ResolveError as exc:
+        raise HTTPException(status_code=exc.status, detail=exc.detail) from exc
+
+
+def _license_doc(spec: ModelSpec) -> dict[str, Any]:
+    return {
+        "model": spec.name,
+        "license": spec.license,
+        "license_url": spec.license_url,
+        "commercial": spec.commercial,
+        "license_status": spec.license_status,
+        "attribution": spec.attribution,
+        "watermark": spec.watermark,
+        "upstream": spec.repo,
+    }
+
+
+@app.post("/v1/audio/tts", status_code=202, response_model=JobAccepted)
+def create_tts(req: TtsRequest, _: None = Depends(require_key)) -> JobAccepted:
+    plan = _plan_tts(req)
+    backend = _tts_backend()
+    # Model, který neběží, odmítnout hned — ne job, který spadne po frontě.
+    # U GPU enginů je to běžný stav (jedou jen v některých profilech SPARKu).
+    ok, detail = backend.engine_health(plan.engine)
+    if not ok:
+        log.info("tts: engine %s nedostupný (%s)", plan.engine, detail)
+        raise HTTPException(status_code=503, detail=tts_down_message(plan.engine))
+
+    params = req.params.model_dump(exclude_none=True)
+    spec = TtsSpec(
+        text=req.text.strip(),
+        language=plan.language,
+        engine=plan.engine,
+        model=plan.model.name,
+        voice=plan.voice,
+        voice_kind=plan.voice_kind,
+        engine_language=plan.engine_language,
+        ref_path=plan.ref_path,
+        speed=req.speed,
+        seed=req.seed,
+        params=params,
+    )
+    payload = req.model_dump()
+    job_id = store.create("tts", payload, plan.model.name, task="tts")
+    manifest = {
+        "task": "tts",
+        "request": payload,
+        "engine": plan.engine,
+        "voice": {
+            "id": plan.voice,
+            "type": plan.voice_kind,
+            # U klonovaného hlasu jde do manifestu i prohlášení o právech.
+            "stored": plan.stored.public() if plan.stored else None,
+        },
+        "language": plan.language,
+        "license": _license_doc(plan.model),
+        "lufs": CONFIG.tts_lufs,
+        "sample_rate": CONFIG.tts_sample_rate,
+        "created_at": time.time(),
+    }
+    position = runner.submit(
+        Job(
+            job_id=job_id,
+            kind="tts",
+            spec=spec,  # type: ignore[arg-type]
+            variations=req.variations,
+            fmt=req.format,
+            mono=True,
+            loop=False,
+            task="tts",
+            manifest=manifest,
+            lane=plan.lane,
+            sample_rate=CONFIG.tts_sample_rate,
+        )
+    )
+    return JobAccepted(job_id=job_id, queue_position=position)
+
+
+def _preset_infos() -> list[VoiceInfo]:
+    out = []
+    for p in tts_presets.presets():
+        spec = CATALOG[p.model]
+        out.append(VoiceInfo(
+            id=f"{p.engine}:{p.voice}", engine=p.engine, model=p.model, type="preset",
+            language=p.language, languages=[p.language], gender=p.gender, grade=p.grade,
+            license=spec.license, commercial=spec.commercial, license_status=spec.license_status,
+            attribution=spec.attribution, note=spec.note if p.engine == "piper" else "",
+        ))
+    return out
+
+
+def _builtin_infos(backend: TtsHTTPBackend | None) -> list[VoiceInfo]:
+    """Vestavěné hlasy GPU enginů — zná je jen běžící runtime."""
+    if backend is None:
+        return []
+    out = []
+    for engine in ("xtts", "chatterbox"):
+        if engine not in backend.urls:
+            continue
+        for v in backend.engine_voices(engine):
+            spec = CATALOG.get(str(v.get("model", "")))
+            if spec is None or spec.kind != "tts":
+                continue
+            out.append(VoiceInfo(
+                id=f"{engine}:{v.get('id', '')}", engine=engine, model=spec.name, type="builtin",
+                languages=list(spec.languages), gender=str(v.get("gender", "")),
+                license=spec.license, commercial=spec.commercial, license_status=spec.license_status,
+                attribution=spec.attribution, watermark=spec.watermark,
+            ))
+    return out
+
+
+def _custom_infos() -> list[VoiceInfo]:
+    """Uložený hlas jde použít s každým klonujícím modelem — jedna položka na model."""
+    out = []
+    for stored in voices.list():
+        for spec in by_kind("tts"):
+            if not spec.cloning:
+                continue
+            out.append(VoiceInfo(
+                id=f"custom:{stored.voice_id}", engine=spec.backend, model=spec.name, type="custom",
+                language=stored.language, languages=list(spec.languages), gender=stored.gender,
+                license=spec.license, commercial=spec.commercial, license_status=spec.license_status,
+                attribution=spec.attribution, watermark=spec.watermark,
+                note=f"{stored.name} — práva: {stored.rights}, zdroj: {stored.source}",
+            ))
+    return out
+
+
+@app.get("/v1/audio/voices", response_model=list[VoiceInfo])
+def list_voices(
+    engine: str | None = None,
+    language: str | None = None,
+    commercial: bool | None = None,
+    type: str | None = Query(default=None, pattern="^(preset|builtin|custom)$"),
+    _: None = Depends(require_key),
+) -> list[VoiceInfo]:
+    """Všechny hlasy: presety Kokoro/Piper, vestavěné hlasy GPU enginů, uložené hlasy postav.
+
+    `?commercial=true` = jen to, co jde do monetizovaného videa.
+    """
+    backend: TtsHTTPBackend | None = backends.get("tts")  # type: ignore[assignment]
+    items = _preset_infos() + _builtin_infos(backend) + _custom_infos()
+    if engine:
+        items = [v for v in items if v.engine == engine]
+    if language:
+        lang = language.lower().split("-")[0].split("_")[0]
+        items = [v for v in items if lang in v.languages]
+    if commercial is not None:
+        items = [v for v in items if v.commercial == commercial]
+    if type:
+        items = [v for v in items if v.type == type]
+    return items
+
+
+def _stored_out(voice_id: str) -> StoredVoiceOut:
+    stored = voices.get(voice_id)
+    if stored is None:
+        raise HTTPException(status_code=404, detail="neznámý hlas")
+    return StoredVoiceOut(**stored.public(), sample_url=f"/v1/audio/voices/{voice_id}/sample")
+
+
+@app.post("/v1/audio/voices", response_model=StoredVoiceOut, status_code=201)
+def upload_voice(
+    voice_id: str = Form(..., description="id hlasu postavy, např. smug-cat"),
+    sample: UploadFile = File(..., description="čistá řeč jednoho mluvčího, ideálně 10–20 s"),
+    rights: str = Form(..., description="own | consented | licensed | synthetic"),
+    source: str = Form(..., description="kdo mluví a odkud vzorek je"),
+    name: str = Form(default=""),
+    language: str = Form(default=""),
+    gender: str = Form(default=""),
+    note: str = Form(default=""),
+    replace: bool = Form(default=False),
+    _: None = Depends(require_key),
+) -> StoredVoiceOut:
+    # Synchronně: ffmpeg na pár sekund, stejně jako upload předlohy u vibe.
+    data = sample.file.read(VOICE_MAX_BYTES + 1)
+    try:
+        voices.ingest(
+            voice_id, data, name=name, language=language, gender=gender,
+            rights=rights, source=source, note=note, replace=replace,
+        )
+    except VoiceError as exc:
+        status = 413 if len(data) > VOICE_MAX_BYTES else 409 if "už existuje" in str(exc) else 422
+        raise HTTPException(status_code=status, detail=str(exc)) from exc
+    return _stored_out(voice_id)
+
+
+@app.get("/v1/audio/voices/{voice_id}", response_model=StoredVoiceOut)
+def get_voice(voice_id: str, _: None = Depends(require_key)) -> StoredVoiceOut:
+    return _stored_out(voice_id)
+
+
+@app.get("/v1/audio/voices/{voice_id}/sample")
+def get_voice_sample(voice_id: str, _: None = Depends(require_key)) -> FileResponse:
+    path = voices.ref_path(voice_id)
+    if path is None:
+        raise HTTPException(status_code=404, detail="neznámý hlas")
+    return FileResponse(path, media_type="audio/wav")
+
+
+@app.delete("/v1/audio/voices/{voice_id}")
+def delete_voice(voice_id: str, _: None = Depends(require_key)) -> dict[str, str]:
+    try:
+        deleted = voices.delete(voice_id)
+    except VoiceError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    if not deleted:
+        raise HTTPException(status_code=404, detail="neznámý hlas")
+    return {"voice_id": voice_id, "status": "deleted"}
+
+
+# --- OpenAI kompatibilní shim ---
+# Spousta nástrojů (i ffmpeg skripty z návodů) umí jen OpenAI `/v1/audio/speech`.
+# Blokuje do dokončení jobu a vrací audio, stejně jako ElevenLabs shim níž.
+
+_OPENAI_FORMATS = {"mp3": "mp3", "wav": "wav", "flac": "flac", "opus": "ogg", "ogg": "ogg", "aac": "mp3", "pcm": "wav"}
+
+
+@app.post("/v1/audio/speech")
+def shim_openai_speech(body: dict[str, Any], _: None = Depends(require_key)) -> Response:
+    """{model, input, voice, response_format?, speed?, language?, commercial_only?}.
+
+    `model` = engine (kokoro, piper, xtts, chatterbox), model z katalogu, nebo
+    OpenAI jméno (tts-1, gpt-4o-mini-tts …) → automatický výběr podle jazyka.
+    """
+    text = (body.get("input") or "").strip()
+    if not text:
+        raise HTTPException(status_code=422, detail="chybí 'input'")
+    model = str(body.get("model") or "")
+    engine, model_name = "", ""
+    if model in ("kokoro", "piper", "xtts", "chatterbox"):
+        engine = model
+    elif model in CATALOG and CATALOG[model].kind == "tts":
+        model_name = model
+    fmt = _OPENAI_FORMATS.get(str(body.get("response_format") or "mp3").lower(), "mp3")
+    voice = str(body.get("voice") or "")
+    language = str(body.get("language") or "")
+    if not language:
+        preset = tts_presets.piper_preset(voice.split(":")[-1]) or tts_presets.kokoro_preset(voice.split(":")[-1])
+        language = preset.language if preset else "en"
+    try:
+        req = TtsRequest(
+            text=text, language=language, voice=voice, engine=engine, model=model_name,
+            speed=float(body.get("speed") or 1.0), format=fmt,
+            commercial_only=bool(body.get("commercial_only", True)),
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    accepted = create_tts(req)
+    row = _await_job(accepted.job_id, CONFIG.tts_timeout_s + 60)
+    data, media = _first_output_bytes(row)
+    return Response(content=data, media_type=media, headers={"X-Job-Id": row["job_id"]})
 
 
 # --- ElevenLabs shim ---

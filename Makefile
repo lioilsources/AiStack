@@ -24,6 +24,8 @@ COMPOSE_AGENT     := docker compose -f deploy/docker-compose.agent.yaml --env-fi
         download-scout \
         up-audio up-audio-music up-audio-sfx down-audio logs-audio \
         build-audio download-audio bench-audio \
+        up-audio-tts up-audio-tts-xtts up-audio-tts-chatterbox stop-audio-tts-gpu \
+        build-audio-tts build-audio-tts-gpu download-audio-tts smoke-audio-tts logs-audio-tts \
         up-agent down-agent logs-agent download-agent \
         gateway-build gateway-run oom-guard-build
 
@@ -71,6 +73,42 @@ download-audio:
 ## Benchmark hudby i SFX → services/audio/bench/timings.csv
 bench-audio:
 	python3 services/audio/scripts/bench.py
+
+## Audio — TTS (řeč). Kokoro + Piper na CPU smí běžet pořád; XTTS-v2
+## (NEKOMERČNÍ) a Chatterbox drží GPU — jen v profilu s volnou pamětí,
+## nikdy vedle directora (PLAN-spark-scheduler.md). TTS kontejnery mají compose
+## profily, takže up-audio / build-audio je nezvednou ani nebuildí.
+up-audio-tts:
+	$(COMPOSE_AUDIO) up -d audio audio-tts
+
+up-audio-tts-xtts:
+	$(COMPOSE_AUDIO) up -d audio-tts-xtts
+
+up-audio-tts-chatterbox:
+	$(COMPOSE_AUDIO) up -d audio-tts-chatterbox
+
+## Shodí jen GPU TTS (docker stop, ne compose down — kontejnery zůstanou).
+stop-audio-tts-gpu:
+	-docker stop audio-tts-xtts audio-tts-chatterbox
+
+logs-audio-tts:
+	$(COMPOSE_AUDIO) logs -f audio-tts audio-tts-xtts audio-tts-chatterbox
+
+## Orchestrátor + CPU TTS: minuty, bez torch.
+build-audio-tts:
+	$(COMPOSE_AUDIO) build audio audio-tts
+
+## GPU TTS: torch cu130 + závislosti, ~20–40 min a ~10 GB na image.
+build-audio-tts-gpu:
+	$(COMPOSE_AUDIO) build audio-tts-xtts audio-tts-chatterbox
+
+## Stažení TTS vah (~12 GB) do $$AUDIO_MODELS_PATH
+download-audio-tts:
+	services/audio/scripts/download.sh tts
+
+## Smoke test TTS přes orchestrátor (EN Kokoro, CZ Piper; --gpu i XTTS a Chatterbox)
+smoke-audio-tts:
+	python3 services/audio/scripts/smoke_tts.py
 
 ## dev NIM container
 up-dev:

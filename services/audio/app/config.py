@@ -28,6 +28,14 @@ class Config:
     # /v1/audio/models ho ohlásí jako unavailable místo aby padal až v jobu.
     music_url: str = field(default_factory=lambda: _env("AUDIO_MUSIC_URL", "http://audio-music:8001"))
     sfx_url: str = field(default_factory=lambda: _env("AUDIO_SFX_URL", "http://audio-sfx:8002"))
+    # TTS: Kokoro i Piper jedou v jednom CPU kontejneru, GPU enginy každý ve
+    # svém (neslučitelné piny transformers). "off" = engine vypnutý
+    # (prázdná hodnota nejde — _env ji nahradí výchozí URL).
+    tts_cpu_url: str = field(default_factory=lambda: _env("AUDIO_TTS_URL", "http://audio-tts:8003"))
+    tts_xtts_url: str = field(default_factory=lambda: _env("AUDIO_TTS_XTTS_URL", "http://audio-tts-xtts:8004"))
+    tts_chatterbox_url: str = field(
+        default_factory=lambda: _env("AUDIO_TTS_CHATTERBOX_URL", "http://audio-tts-chatterbox:8005")
+    )
 
     # Výchozí modely — jména musí sedět na klíče v catalog.CATALOG.
     music_model: str = field(default_factory=lambda: _env("AUDIO_MUSIC_MODEL", "acestep-v15-turbo"))
@@ -37,9 +45,14 @@ class Config:
     # paralelní joby by se jen praly o paměť a každý by běžel pomaleji.
     music_workers: int = field(default_factory=lambda: _env_int("AUDIO_MUSIC_WORKERS", 1))
     sfx_workers: int = field(default_factory=lambda: _env_int("AUDIO_SFX_WORKERS", 1))
+    # CPU TTS (Kokoro, Piper) smí běžet paralelně, GPU TTS ne.
+    tts_cpu_workers: int = field(default_factory=lambda: _env_int("AUDIO_TTS_CPU_WORKERS", 2))
+    tts_gpu_workers: int = field(default_factory=lambda: _env_int("AUDIO_TTS_GPU_WORKERS", 1))
 
     music_timeout_s: float = field(default_factory=lambda: _env_float("AUDIO_MUSIC_TIMEOUT_S", 900.0))
     sfx_timeout_s: float = field(default_factory=lambda: _env_float("AUDIO_SFX_TIMEOUT_S", 300.0))
+    # GPU TTS po startu kontejneru natahuje váhy (~1–2 min) — proto štědře.
+    tts_timeout_s: float = field(default_factory=lambda: _env_float("AUDIO_TTS_TIMEOUT_S", 600.0))
 
     # Loudness cíle (plán §3.2). Hudba tišeji než SFX kvůli hlavičce pro mix.
     music_lufs: float = field(default_factory=lambda: _env_float("AUDIO_MUSIC_LUFS", -16.0))
@@ -48,6 +61,10 @@ class Config:
     # Vibe skladby se poslouchají samostatně (telefon, streaming), ne v mixu
     # hry — proto hlasitěji, na obvyklých −14 LUFS (plán vibe §3 krok 4).
     vibe_lufs: float = field(default_factory=lambda: _env_float("AUDIO_VIBE_LUFS", -14.0))
+    # Řeč pro video (MemeShorts mixuje celek na −14 LUFS): hlas o kus tišeji,
+    # ať zbyde místo na SFX a podkres. 48 kHz = vzorkovací frekvence videa.
+    tts_lufs: float = field(default_factory=lambda: _env_float("AUDIO_TTS_LUFS", -16.0))
+    tts_sample_rate: int = field(default_factory=lambda: _env_int("AUDIO_TTS_SAMPLE_RATE", 48000))
 
     ogg_quality: int = field(default_factory=lambda: _env_int("AUDIO_OGG_QUALITY", 6))
     loop_crossfade_s: float = field(default_factory=lambda: _env_float("AUDIO_LOOP_CROSSFADE_S", 2.0))

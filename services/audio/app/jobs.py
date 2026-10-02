@@ -8,6 +8,7 @@ obojí blokující, a workerů jsou jednotky.
 
 from __future__ import annotations
 
+import dataclasses
 import hashlib
 import json
 import logging
@@ -32,6 +33,10 @@ log = logging.getLogger(__name__)
 
 _SEED_MAX = 2**31 - 1
 
+# Fronty. Jedna na modelový kontejner (víc jobů na jeden model by se pralo
+# o GPU), TTS rozdělené na CPU a GPU část.
+LANES = ("music", "sfx", "tts-cpu", "tts-gpu")
+
 
 @dataclass
 class Job:
@@ -52,6 +57,14 @@ class Job:
     # Základ manifestu; runner doplní varianty a časy a uloží ho k jobu.
     manifest: dict[str, Any] | None = None
     payload: dict[str, Any] = field(default_factory=dict)
+    # Fronta: "" = podle kind. TTS má dvě (tts-cpu, tts-gpu), aby krátká
+    # replika z Kokora nečekala za klonováním na GPU.
+    lane: str = ""
+    sample_rate: int = 44100
+
+    @property
+    def queue(self) -> str:
+        return self.lane or self.kind
 
 
 class Runner:
@@ -68,16 +81,18 @@ class Runner:
         self.store = store
         self.backends = backends
         self.samples = samples
-        self.queues: dict[str, queue.Queue[Job]] = {
-            "music": queue.Queue(),
-            "sfx": queue.Queue(),
-        }
+        self.queues: dict[str, queue.Queue[Job]] = {lane: queue.Queue() for lane in LANES}
         self._threads: list[threading.Thread] = []
         self._stop = threading.Event()
-        self._last_activity: dict[str, float] = {"music": 0.0, "sfx": 0.0}
+        self._last_activity: dict[str, float] = {lane: 0.0 for lane in LANES}
 
     def start(self) -> None:
-        counts = {"music": self.cfg.music_workers, "sfx": self.cfg.sfx_workers}
+        counts = {
+            "music": self.cfg.music_workers,
+            "sfx": self.cfg.sfx_workers,
+            "tts-cpu": self.cfg.tts_cpu_workers,
+            "tts-gpu": self.cfg.tts_gpu_workers,
+        }
         for kind, n in counts.items():
             for i in range(max(1, n)):
                 t = threading.Thread(
@@ -91,15 +106,17 @@ class Runner:
         self._stop.set()
 
     def submit(self, job: Job) -> int:
-        q = self.queues[job.kind]
+        q = self.queues[job.queue]
         q.put(job)
         return q.qsize()
 
     def queue_position(self, job_id: str, kind: str) -> int | None:
-        with self.queues[kind].mutex:
-            for idx, job in enumerate(list(self.queues[kind].queue)):
-                if job.job_id == job_id:
-                    return idx + 1
+        lanes = [lane for lane in LANES if lane == kind or lane.startswith(f"{kind}-")]
+        for lane in lanes:
+            with self.queues[lane].mutex:
+                for idx, job in enumerate(list(self.queues[lane].queue)):
+                    if job.job_id == job_id:
+                        return idx + 1
         return None
 
     def idle_seconds(self, kind: str) -> float | None:
@@ -113,8 +130,8 @@ class Runner:
 
     # --- worker ---
 
-    def _worker(self, kind: str) -> None:
-        q = self.queues[kind]
+    def _worker(self, lane: str) -> None:
+        q = self.queues[lane]
         while not self._stop.is_set():
             try:
                 job = q.get(timeout=1.0)
@@ -126,7 +143,7 @@ class Runner:
                 log.exception("job %s selhal", job.job_id)
                 self.store.mark_error(job.job_id, str(exc))
             finally:
-                self._last_activity[kind] = time.time()
+                self._last_activity[lane] = time.time()
                 q.task_done()
 
     def _run_job(self, job: Job) -> None:
@@ -147,7 +164,9 @@ class Runner:
 
         target_lufs = job.target_lufs
         if target_lufs is None:
-            target_lufs = self.cfg.music_lufs if job.kind == "music" else self.cfg.sfx_lufs
+            target_lufs = {
+                "music": self.cfg.music_lufs, "sfx": self.cfg.sfx_lufs, "tts": self.cfg.tts_lufs,
+            }[job.kind]
         outputs: list[dict[str, Any]] = []
         failures: list[str] = []
         generated: list[dict[str, Any]] = []
@@ -161,7 +180,7 @@ class Runner:
                 seed = job.spec.seed if job.spec.seed is not None else random.randint(0, _SEED_MAX)
                 if job.variations > 1 and job.spec.seed is not None:
                     seed = (job.spec.seed + idx) % (_SEED_MAX + 1)
-                spec = GenSpec(**{**job.spec.__dict__, "seed": seed})
+                spec = dataclasses.replace(job.spec, seed=seed)
 
                 var_dir = tmp / f"v{idx}"
                 var_dir.mkdir()
@@ -189,6 +208,7 @@ class Runner:
                         # efekt delší, než se žádalo, se při rychlé palbě
                         # překrývá sám se sebou.
                         max_duration_s=spec.duration_s if job.kind == "sfx" else None,
+                        sample_rate=job.sample_rate,
                         extra=extra,
                     )
                 except BackendUnavailable as exc:

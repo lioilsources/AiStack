@@ -31,8 +31,8 @@ deploy/                       compose soubory, litellm konfigurace, reasoning pa
   parsers/                    custom reasoning parsery (nano_v3, nemotron_v3)
 
 services/
-  audio/                      Python: hudba + SFX (fronta, ffmpeg post-proc, SQLite)
-    runtime/                  image modelových kontejnerů pro GB10 (ACE-Step, MOSS)
+  audio/                      Python: hudba + SFX + TTS (fronta, ffmpeg post-proc, SQLite)
+    runtime/                  image modelových kontejnerů pro GB10 (ACE-Step, MOSS, TTS)
     scripts/                  download.sh, smoke_*, bench.py
   controller-manager/         Go: dynamic model switching přes docker.sock
     config/models.yaml        registr spravovaných stacků
@@ -111,6 +111,25 @@ Apache-2.0). Modely se zvedají a shazují přes controller
   Měření a pasti (náhodné vzorkování reference, LM plán nejde zopakovat):
   `services/audio/NOTES.md`
 
+### TTS (MemeShorts) — `/v1/audio/tts`, `/v1/audio/voices`
+
+Tři další kontejnery: `audio-tts` (Kokoro-82M + Piper, **CPU**, běží pořád, ~1 GiB),
+`audio-tts-xtts` (XTTS-v2, GPU) a `audio-tts-chatterbox` (Chatterbox Multilingual,
+GPU). Mají compose profily `tts` / `tts-gpu`, takže `make up-audio` je nezvedne;
+`make up-audio-tts`, `up-audio-tts-xtts`, `up-audio-tts-chatterbox`.
+
+- **XTTS-v2 je NEKOMERČNÍ** (Coqui Public Model License). `/v1/audio/tts` má
+  `commercial_only=true` ve výchozím stavu → nekomerční/neověřený model vrátí 403.
+- **Češtinu umí jen Piper, XTTS a komunitní chatterbox-cs.** Komerčně čistá je
+  jen Piper Kasandra (CC BY 4.0, uvést autora). Kokoro ani Chatterbox
+  Multilingual česky neumí. Piper Jirka je dotrénovaný z lessac (Blizzard 2013,
+  jen výzkum) → neověřené.
+- Klon hlasu postavy: `POST /v1/audio/voices` (povinné `rights` + `source`).
+- GPU TTS **nikdy vedle directora**; build i testy jen v bezpečném okně
+  (`PLAN-spark-scheduler.md` §3b). Do rozvrhu zatím nezařazené.
+- Detaily, pasti a nasazení: `services/audio/README.md` (sekce TTS), licence
+  `services/audio/LICENSES.md`.
+
 Váhy leží mimo repo v `$AUDIO_MODELS_PATH` (default `/home/ol1n/dev/audio/models`),
 ne v `/opt/audio` jak říkal plán — na SPARKu není passwordless sudo.
 Detaily: `services/audio/README.md`, licence `services/audio/LICENSES.md`.
@@ -146,9 +165,12 @@ jako `openclaw-default`. OpenClaw gateway běží na hostu a volá `http://127.0
 | 8003 | ocr-api | NIM |
 | 8004 | translate | NIM |
 | 8091 | gen-queue | Go async job queue (FLUX NIM), interní — cloudflared /nim/* |
-| 8093 | audio | `0.0.0.0` — orchestrátor hudby a SFX, přes gateway `/v1/audio/*` |
+| 8093 | audio | `0.0.0.0` — orchestrátor hudby, SFX a TTS, přes gateway `/v1/audio/*` |
 | 8094 | audio-music | ACE-Step 1.5 REST API (interní) |
 | 8095 | audio-sfx | MOSS-SoundEffect / Stable Audio Open wrapper (interní) |
+| 8102 | audio-tts | Kokoro + Piper na CPU (interní, profil `tts`) |
+| 8103 | audio-tts-xtts | XTTS-v2, GPU, nekomerční (interní, profil `tts-gpu`) |
+| 8104 | audio-tts-chatterbox | Chatterbox Multilingual, GPU (interní, profil `tts-gpu`) |
 | 8005 | swarm-embed | vLLM, profile: embed |
 | 8010 | swarm-nano | vLLM |
 | 8011 | swarm-coder | vLLM (NGC image) |

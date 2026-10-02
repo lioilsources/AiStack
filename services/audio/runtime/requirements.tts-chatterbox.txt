@@ -1,0 +1,25 @@
+# Závislosti kontejneru audio-tts-chatterbox.
+#
+# Kopírují pyproject.toml chatterbox-tts (commit v Dockerfile.tts-chatterbox),
+# protože samotný balík se instaluje s --no-deps: pinuje torch==2.6.0, který
+# na sm_121 nemá kernely, a gradio (démo, nepotřebujeme). Vynechané jsou
+# i jazykové doplňky (spacy-pkuseg pro čínštinu, dicta-onnx pro hebrejštinu,
+# russian-text-stresser) — MemeShorts je EN + CZ; tokenizer je importuje líně.
+librosa==0.11.0
+s3tokenizer==0.3.0
+transformers==5.2.0
+diffusers==0.29.0
+conformer==0.3.2
+safetensors==0.5.3
+pykakasi==2.3.0
+pyloudnorm==0.2.0
+omegaconf==2.3.0
+soundfile==0.13.1
+# Vodoznak Resemble Perth — chatterbox ho volá u každého výstupu.
+resemble-perth @ git+https://github.com/resemble-ai/Perth.git@ff1c8ac55a976971245cdd53c18d6131ca00d993
+
+# Wrapper.
+fastapi==0.118.0
+uvicorn[standard]==0.37.0
+pydantic==2.11.7
+python-multipart==0.0.20

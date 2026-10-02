@@ -1,0 +1,19 @@
+# Závislosti kontejneru audio-tts-xtts (XTTS-v2 přes coqui-tts).
+#
+# coqui-tts = udržovaný fork Coqui TTS od Idiap (kód MPL-2.0). Licence VAH
+# XTTS-v2 je Coqui Public Model License — nekomerční (LICENSES.md).
+# torch je v constraints, coqui-tts ho bez extra [cuda] netáhne.
+coqui-tts==0.27.5
+# coqui-tts od torch 2.9 při importu vyžaduje nainstalovaný torchcodec (jen
+# kontroluje, že balík existuje; sám ho používá jen při tréninku). 0.10 je
+# pár k torch 2.10 a aarch64 wheel má jen index cu130. Referenci server čte
+# přes soundfile (tts_gpu_server._patch_xtts_audio_loader), ne přes torchcodec.
+torchcodec==0.10.0+cu130
+transformers==4.57.1
+soundfile==0.13.1
+
+# Wrapper.
+fastapi==0.118.0
+uvicorn[standard]==0.37.0
+pydantic==2.11.7
+python-multipart==0.0.20

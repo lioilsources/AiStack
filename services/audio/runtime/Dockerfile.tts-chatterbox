@@ -1,0 +1,73 @@
+# =============================================================================
+# audio-tts-chatterbox — Chatterbox Multilingual (Resemble AI, MIT) na GB10
+# =============================================================================
+#
+# Upstream pyproject pinuje torch==2.6.0 (na sm_121 bez kernelů) a gradio,
+# proto se balík instaluje s --no-deps a závislosti jsou vypsané ručně
+# v requirements.tts-chatterbox.txt — stejně jako MOSS v Dockerfile.sfx.
+# Vlastní image (ne společný s XTTS): Chatterbox chce transformers 5.2,
+# coqui-tts 4.57.
+#
+# Každý výstup nese neslyšitelný vodoznak Resemble Perth.
+#
+# Build (na SPARKu, jen v bezpečném okně — PLAN-spark-scheduler.md):
+#   docker build -f runtime/Dockerfile.tts-chatterbox -t aistack/audio-tts-chatterbox:latest .
+#
+# =============================================================================
+
+ARG CUDA_TAG=13.0.1-runtime-ubuntu24.04
+FROM nvidia/cuda:${CUDA_TAG}
+
+ENV DEBIAN_FRONTEND=noninteractive \
+    LANG=C.UTF-8 \
+    PYTHONUNBUFFERED=1
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        git curl ca-certificates build-essential \
+        python3.12 python3.12-dev python3.12-venv \
+        libsndfile1 \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN python3.12 -m venv /opt/venv
+ENV PATH=/opt/venv/bin:$PATH
+RUN pip install --no-cache-dir --upgrade pip setuptools wheel
+
+RUN pip install --no-cache-dir \
+        --extra-index-url https://download.pytorch.org/whl/cu130 \
+        torch==2.10.0+cu130 torchaudio==2.10.0+cu130
+
+# ==================== CUDA knihovny: pip před systémem ====================
+# Viz Dockerfile.sfx.
+ENV NV_PIP_LIBS=/opt/venv/lib/python3.12/site-packages/nvidia
+ENV LD_LIBRARY_PATH=${NV_PIP_LIBS}/cu13/lib:${NV_PIP_LIBS}/cudnn/lib:${NV_PIP_LIBS}/nccl/lib:${NV_PIP_LIBS}/cusparselt/lib:${LD_LIBRARY_PATH}
+RUN test -f "${NV_PIP_LIBS}/cu13/lib/libcublas.so.13" \
+    || (echo "CHYBA: torch nenainstaloval nvidia/cu13 knihovny — zkontroluj index cu130" && exit 1)
+
+COPY runtime/requirements.tts-chatterbox.txt runtime/constraints.tts-gpu.txt /tmp/
+RUN pip install --no-cache-dir \
+        --extra-index-url https://download.pytorch.org/whl/cu130 \
+        -c /tmp/constraints.tts-gpu.txt -r /tmp/requirements.tts-chatterbox.txt
+
+# Commit, ne větev: upstream mění výchozí T3 i API generate().
+ARG CHATTERBOX_REF=5de7a54aa4e5e2baadb0182dde554908b48b85c2
+RUN pip install --no-cache-dir --no-deps \
+        "chatterbox-tts @ git+https://github.com/resemble-ai/chatterbox.git@${CHATTERBOX_REF}" \
+    && python3 -c "import torch; assert torch.__version__.startswith('2.10'), torch.__version__" \
+    && python3 -c "from chatterbox.mtl_tts import ChatterboxMultilingualTTS; print('chatterbox OK')"
+
+COPY runtime/tts_gpu_server.py /srv/tts_gpu_server.py
+WORKDIR /srv
+
+ENV TTS_ENGINE=chatterbox \
+    TTS_MODELS_DIR=/models \
+    TTS_PORT=8005 \
+    TTS_IDLE_UNLOAD_S=900 \
+    HF_HUB_OFFLINE=1 \
+    TOKENIZERS_PARALLELISM=false \
+    TORCHDYNAMO_DISABLE=1
+
+EXPOSE 8005
+HEALTHCHECK --interval=30s --timeout=10s --retries=3 --start-period=120s \
+    CMD curl -sf http://localhost:8005/health || exit 1
+
+CMD ["python3", "tts_gpu_server.py"]

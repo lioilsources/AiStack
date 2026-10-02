@@ -61,8 +61,8 @@ MODEL_DOWN = "Hudební model teď neběží (SPARK je mimo denní režim 07–24
 class BackendUnavailable(BackendError):
     """Model se nedá vůbec kontaktovat — ne že by odpověděl chybou."""
 
-    def __init__(self, detail: str = "") -> None:
-        super().__init__(MODEL_DOWN)
+    def __init__(self, detail: str = "", message: str = MODEL_DOWN) -> None:
+        super().__init__(message)
         self.detail = detail
 
 
