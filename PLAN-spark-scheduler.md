@@ -29,7 +29,7 @@ review); rozvrh s ním nepočítá, dokud se neodblokuje (§6).
 | 10 | SwypeKids | aktivní, zatím bez SPARKu | v3.0 možná jednorázová dávka desítek obrázků nálepek | comfy / flux-schnell | 0 teď |
 | 11 | FineTune (VL soudce) | aktivní, jednorázově | `vl` (Qwen2.5-VL-7B, ~20 GiB) na kalibraci F6, ~240 requestů | llm (vejde se vedle qwen36) | 15–30 min, spouští uživatel |
 | – | **AiSwarmBattle** | **cold** | swarm-nano, swarm-embed, swarm-litellm, evaluator; fáze 3 celý Nemotron stack | – | evaluator čeká na review uživatele; fáze 1 a 3 nezačaté |
-| – | **Aukrofy** | **cold** | LLM (`llm-dev`/`llm-lab` — v rozvrhu neexistují) | – | první E2E neproběhl; chybí `.env`, CF Access, SSH |
+| 12 | Aukrofy | aktivní (od 2. 10., z cold) | LLM `openclaw-default` (qwen36), sdílí, nic vlastního | llm | E2E běhy 10–30 min, ~8 souběžně, pár týdně |
 
 ## 2. Profily
 
@@ -71,7 +71,7 @@ a tier 0 obrázky obslouží flux-schnell i v llm okně. Naopak director má fro
 
 | Čas | Profil | Proč |
 |---|---|---|
-| **07–13** | comfy | interaktivní obrázky, video, audio, lab; **tributy 12:30** |
+| **07–13** | comfy | interaktivní obrázky, video, audio, lab; **tributy 11:30** |
 | **13–19** | director (denní směna) | stejné dávky jako v noci, resumují se |
 | **19–01** | llm | večerní LLM práce (Právník, ToyShaders, FineTune VL), heartbeat **19:05–00:55**, tier 0 obrázky |
 | **01–07** | director | noční dávky |
@@ -111,14 +111,13 @@ Aukrofy ne.
 | Projekt | Blokuje | Až se odblokuje |
 |---|---|---|
 | AiSwarmBattle | review evaluatoru (větev `phase2/evaluator`, služba v `docker-compose.swarm.yaml` necommitnutá); fáze 1 a 3 nezačaté | vrátit Nano + embed + swarm-litellm do profilu llm (WorldLibraryProject PR #9 — zavřít, nahrazeno tímto plánem); fáze 3 (celý Nemotron stack) potřebuje vlastní profil, do llm se nevejde |
-| Aukrofy | první E2E nikdy neproběhl; chybí `.env`, CF Access, SSH (od uživatele); session neodpovídá | přesměrovat `llm-dev`/`llm-lab` na `openclaw-default` (llm okno) |
 
 ## 7. Fáze implementace
 
 | Fáze | Co | Stav |
 |---|---|---|
 | 1 | profily comfy / llm / gemma / director, okna 07/17/01, `library-chapters` + `storyteller-night` v noci, translate ven, tributy 16:30, heartbeat 17:05–00:55 | **nasazeno 2026-10-01** (WorldLibraryProject 8857abc, PromoClown PR #2) |
-| 1b | llm = qwen36 + flux-schnell (Nano/embed ven, cold); okna podle §3b; tributy 12:30, heartbeat 19:05–00:55; sonda toleruje 1 variantu useknutou na délce | **nasazeno 2026-10-01 14:16** (WorldLibraryProject PR #11, PromoClown PR #3) |
+| 1b | llm = qwen36 + flux-schnell (Nano/embed ven, cold); okna podle §3b; tributy 11:30, heartbeat 19:05–00:55; sonda toleruje 1 variantu useknutou na délce | **nasazeno 2026-10-01 14:16** (WorldLibraryProject PR #11, PromoClown PR #3) |
 | 2 | fronta dávek + gemma na vyžádání + zkracování prázdných oken | |
 | 3 | přehled (profil, fronta, paměť, teploty), notifikace jako dnes `notify.sh` | |
 
