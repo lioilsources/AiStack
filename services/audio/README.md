@@ -149,6 +149,8 @@ Pasti:
 - `Xtts.eval()` vrací `None` (přetěžuje `nn.Module.eval`) — `model.to().eval()`
   v řetězu dá `None` místo modelu.
 - Chatterbox neumí `speed` — parametr se u něj ignoruje.
+- `TTS_PRELOAD=true` u GPU kontejneru natahuje model v lifespanu — HTTP
+  (i `/health`) naběhne až po načtení vah. Výchozí je proto líné načtení.
 - Chatterbox generuje nejvýš 1000 speech tokenů (~40 s); server delší text dělí
   po větách (`TTS_CHUNK_CHARS`) a skládá s 120 ms pauzou.
 
@@ -242,7 +244,8 @@ SFX škáluje lineárně s počtem kroků (`SFX_DEFAULT_STEPS`): 100 → 22,5 s,
 | Piper kasandra, ~6 s řeči | 0,3 s samotná syntéza | (v tom) |
 | XTTS-v2 na CPU, věta, vestavěný hlas | 13 s (RTF ~2) | ~3,1 GiB RSS |
 | XTTS-v2 na CPU, klon, ~7,5 s řeči | 25 s | |
-| Chatterbox V3 na CPU, 2,8 s řeči | ~10 min (S3Gen na CPU) | ~4,9 GiB RSS |
+| Chatterbox V3 na CPU, vestavěný hlas, 2,8 s řeči | ~10 min (S3Gen na CPU) | ~4,9 GiB RSS |
+| Chatterbox V3 na CPU, klon přes orchestrátor, 4,1 s řeči | 225 s | |
 
 Na GPU se XTTS i Chatterbox čekají o řád rychlejší — změřit po nasazení
 (`scripts/smoke_tts.py --gpu`).
