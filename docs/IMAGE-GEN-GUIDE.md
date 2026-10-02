@@ -1,6 +1,6 @@
 # Generování obrázků na SPARKu — průvodce pro projekty
 
-Stav 2026-10-02. Pro sessions, které plánují grafiku (Mutants, Kittens, BioDefenseRogue, …).
+Stav 2026-10-02 (časy doplněné z běhu MemeShorts G0 téhož dne). Pro sessions, které plánují grafiku (Mutants, Kittens, BioDefenseRogue, …).
 „Neověřeno“ = nezměřené, v plánu tak označit. Okna a profily: `PLAN-spark-scheduler.md` §3 (jediný zdroj
 časů). Dávky ohlásit session **Director** předem (čas, počet).
 
@@ -19,7 +19,7 @@ Stav 2026-10-02. Pro sessions, které plánují grafiku (Mutants, Kittens, BioDe
 - **ControlNet**: SDXL union promax (xinsir), SDXL openpose, flux union pro 2, flux depth v3, InstantID
 - **IP-Adapter**: Plus SDXL (style/obsah reference), FaceID Plus v2
 - **LoRA**: Pixar styl pro SDXL / Illustrious / Pony / Flux a další
-- **výřez pozadí**: ComfyUI-RMBG (BiRefNet / RMBG) — nainstalované, neměřené; **LayerDiffuse (přímá alfa) není**
+- **výřez pozadí**: ComfyUI-RMBG — BiRefNet-general a BiRefNet_toonout ~4 s/obr. (první běh 105 s načtení), čistý výřez na anime i 3D; RMBG-2.0 je nekomerční. **LayerDiffuse (přímá alfa) není**
 - **upscale**: 4x-UltraSharp
 - **video**: Wan 2.2 (ti2v 5B ~25 min / 121 snímků; i2v, t2v, VACE, control 14B), LTX 2.3, AnimateDiff, frame interpolation
 - **3D**: Trellis2, Hunyuan3D; **audio v ComfyUI**: MMAudio
@@ -56,10 +56,17 @@ Ol1nLLM `tools/lab`. Workflow flux-schnell txt2img / img2img: Ol1nLLM větev `fe
 
 | Co | Čas na obrázek |
 |---|---|
-| flux-schnell NIM 1024² | ~2,7 s sám, ~5,5 s vedle LLM; při frontě jiných dávek čekání |
+| flux-schnell NIM 1024² | ~2,7 s sám, ~5,5 s vedle LLM; ve sdílené frontě 10–30 s včetně čekání |
+| flux-schnell NIM 832×1216 | funguje (obdélník ověřen), ~10 s včetně fronty |
+| flux-schnell ComfyUI img2img ~1 Mpx | 4 kroky 13–16 s (první 30 s s načtením), 12 kroků 35 s |
 | flux-dev ComfyUI 20 kroků | ~45 s |
-| SDXL + ControlNet / IP-Adapter | 10–20 s (neověřeno) |
+| FLUX Kontext 20 kroků s referencí, 832×1216 | 74–84 s (reference zdvojnásobí tokeny) |
+| Animagine XL 4 (SDXL) 832×1216, 28 kroků | txt2img 9,8 s, img2img 0,65 10,9 s, + IP-Adapter Plus 13,1 s |
+| Wan 2.2 i2v 14B + Lightning LoRA, 4 kroky | 592×864 49 sn. 204 s, 81 sn. 304 s; 832×1216 49 sn. 370 s (vč. načtení; workflow video-stack `i2v_final_14b_lightning_portrait`) |
 | Wan 2.2 ti2v 5B, 121 snímků | ~25 min, bez checkpointu — nespouštět < 40 min před koncem okna |
+
+Po `POST /free` ukazuje `/system_stats` ještě desítky sekund starou volnou paměť — kdo podle ní
+rozhoduje, ať chvíli polluje.
 
 Rozumně 3–4 varianty na prompt.
 
@@ -69,6 +76,9 @@ Rozumně 3–4 varianty na prompt.
 - **Postavu drží img2img z reference** (flux Kontext, SDXL img2img): 85–100 % nad branou DINO 0,80.
 - **Depth ControlNet 0,4** drží siluetu a pouští styl naplno (flux-schnell: 65 % nad branou).
 - U flux-schnell v ComfyUI jde denoise se 4 kroky jen skokově: 0,85–1,0 = plné přemalování.
+- MemeShorts (anime postavy, DINOv2 k masteru, 8 obrázků): SDXL img2img 0,98; flux-schnell img2img
+  0,96–0,98 (výraz skoro nezmění); Kontext 0,86 (mění výraz i gesta); IP-Adapter 0,83; flux-schnell NIM
+  txt2img se seedem masteru 0,90 ve 3D stylu (drží postavu a mění výraz), s jiným seedem jiná postava.
 - Doporučení: pevný stylový blok v promptu + 1–3 schválené reference (IP-Adapter / Kontext / img2img) +
   pevný seed na asset; pro skládané díly šablona siluety s kotevními body přes ControlNet.
 - Trénink vlastní LoRA: neověřeno (zeptat se session FineTune).
