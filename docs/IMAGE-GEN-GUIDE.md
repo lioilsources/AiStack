@@ -43,7 +43,8 @@ curl -s -o out.jpg http://192.168.88.66:8091/nim/flux-schnell/jobs/<id>/result  
 
 - Výsledek se drží 1 h, pak zmizí i stav jobu. Fronta je jedna a sdílená: **čekat na `done` minuty, ne
   sekundy** (storyteller 1. 10.: klient s 15s timeoutem posílal duplikáty). Souběžnost 2 na projekt.
-- Seed < 2³² (NIM vrací 422). Obdélníkové rozměry: násobky 64, neověřeno.
+- Seed < 2³² (NIM vrací 422). **Šířka i výška jen z {768, 832, 896, 960, 1024, 1088, 1152, 1216, 1280, 1344}**,
+  jinak 422 (Kittens, 3. 10.: 832×1184 odmítnuto, 832×1216 prošlo).
 - flux-schnell **ignoruje „no text“** a rád dokreslí falešné popisky (storyteller: ~40 % u „picture book“
   promptů). Pomáhá formulace bez čeho popisovat: portrét na plochém pozadí, „3D film still“, žádné
   „book/poster/label“. Kontrola OCR: storyteller `tools/find-lettering.swift`.
@@ -57,7 +58,7 @@ Ol1nLLM `tools/lab`. Workflow flux-schnell txt2img / img2img: Ol1nLLM větev `fe
 | Co | Čas na obrázek |
 |---|---|
 | flux-schnell NIM 1024² | ~2,7 s sám, ~5,5 s vedle LLM; ve sdílené frontě 10–30 s včetně čekání |
-| flux-schnell NIM 832×1216 | funguje (obdélník ověřen), ~10 s včetně fronty |
+| flux-schnell NIM 832×1216 | funguje (rozměry viz §3), ~10–16 s včetně fronty |
 | flux-schnell ComfyUI img2img ~1 Mpx | 4 kroky 13–16 s (první 30 s s načtením), 12 kroků 35 s |
 | flux-dev ComfyUI 20 kroků | ~45 s |
 | FLUX Kontext 20 kroků s referencí, 832×1216 | 74–84 s (reference zdvojnásobí tokeny) |
