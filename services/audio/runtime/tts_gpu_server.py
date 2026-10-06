@@ -218,6 +218,14 @@ def _load_t3(model: Any, path: Path) -> None:
     state = load_file(str(path), device="cpu")
     if "model" in state.keys():
         state = state["model"][0]
+    # Po první syntéze má T3 navíc podmodul `patched_model` (obal nad tfmr,
+    # staví se líně při `compiled = False`). Striktní load_state_dict pak hlásí
+    # chybějící `patched_model.*` klíče — 6. 10. 2026 tak padal přechod
+    # multilingual → chatterbox-cs, i když checkpointy mají stejných 292 klíčů.
+    # Obal se zahodí a při další syntéze postaví znovu nad novými vahami.
+    if getattr(model.t3, "patched_model", None) is not None:
+        del model.t3.patched_model
+    model.t3.compiled = False
     model.t3.load_state_dict(state)
     model.t3.to(DEVICE).eval()
 
