@@ -131,7 +131,8 @@ poslech.
 
 ## Když model neběží
 
-`audio-music` je nahoře jen v profilu comfy SPARKu (plánovač
+`audio-music` se od 2026-10-06 nestartuje samo ani v profilu comfy — jen na vyžádání
+(`docker start audio-music audio-sfx` nebo controller `/ctrl/activate?model=audio-music`), a jen v okně comfy (plánovač
 `WorldLibraryProject/deploy/spark/rag-schedule.sh`, okna v `PLAN-spark-scheduler.md` §3). Mimo něj:
 
 - upload předlohy projde (je to jen ffmpeg),
