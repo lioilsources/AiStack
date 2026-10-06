@@ -39,7 +39,7 @@ Základ (OS, LiteLLM, gateway, chroma, law-chat, library-chat, postiz, kontejner
 
 | Profil | Nahoře | GiB | Slouží |
 |---|---|---|---|
-| **comfy** | ComfyUI (≤ 52) + audio (25) + flux-schnell NIM (17) | ~95–115 | lab a tier 2 StoryTelleru, Kirian, Stickers, PromoClown tributy, MusicStudio |
+| **comfy** | ComfyUI (≤ 52) + flux-schnell NIM (17); audio (25) jen na vyžádání | ~90 | lab a tier 2 StoryTelleru, Kirian, Stickers, PromoClown tributy, MusicStudio |
 | **llm** | qwen36 (36,5) + flux-schnell NIM (17) | ~75 | Právník chat, ToyShaders, Knihovník chat, PromoClown heartbeat, **tier 0 obrázky**; `vl` (20) na vyžádání |
 | **gemma** (na vyžádání) | Gemma-4 (util 0,40 ≈ 49) + flux-schnell (17) | ~86 | agent Právníka místo qwen36 |
 | **director** | swarm-director 0,75 (91) sám | ~111 | Knihovník enrich + Kindlify chapters + StoryTeller RAG |
@@ -50,6 +50,9 @@ Základ (OS, LiteLLM, gateway, chroma, law-chat, library-chat, postiz, kontejner
   takže na něj pravidlo „ComfyUI vedle LLM“ nedopadá (ten incident byl torch v ComfyUI, který vidí jen MemFree).
   Tier 0 obrázky přes gen-queue (`/nim/flux-schnell`, 1–2 s/obrázek) jsou pak k dispozici v comfy i llm okně.
   Vedle directora ne — 25. 9. to shodilo celý stroj.
+- **Audio v comfy jen na vyžádání** (od 2026-10-06): `docker start audio-music audio-sfx` nebo controller
+  `/ctrl/activate?model=audio-music`; při přepnutí z comfy se zastaví. S audiem a flux-schnell naráz nezbývalo
+  ComfyUI dost MemFree a po vystřídání velkých modelů počítalo na CPU (6. 10., prompt 493 s).
 - **translate** (Qwen3-32B) z rozvrhu vypadl: qwen36 ho ve všem předčí (bench §6a); alias `translate` dál
   existuje a padá řetězem na model okna.
 
