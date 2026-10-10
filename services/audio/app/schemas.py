@@ -117,6 +117,17 @@ class TtsParams(BaseModel):
     repetition_penalty: Optional[float] = Field(default=None, ge=1.0, le=20.0)
 
 
+class TtsRhythm(BaseModel):
+    """Řeč na mřížce: fráze zarovnané na doby (app/tts/rhythm.py)."""
+
+    bpm: int = Field(ge=40, le=220)
+    # Preset frázování: hustota textu, délka pauz a projev.
+    style: Literal["spoken", "news", "slam", "rap", "preacher"] = "spoken"
+    beats_per_bar: int = Field(default=4, ge=2, le=8)
+    # Klik pod hlasem, přízvuk na první době taktu.
+    beat: bool = False
+
+
 class TtsRequest(BaseModel):
     text: str = Field(min_length=1, max_length=5000)
     # ISO 639-1 (en, cs, …); en-US / cs_CZ se zkrátí.
@@ -135,6 +146,8 @@ class TtsRequest(BaseModel):
     variations: int = Field(default=1, ge=1, le=4)
     format: AudioFormat = "wav"
     params: TtsParams = Field(default_factory=TtsParams)
+    # None = obyčejné čtení.
+    rhythm: Optional[TtsRhythm] = None
 
 
 class VoiceInfo(BaseModel):

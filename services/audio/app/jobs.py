@@ -61,6 +61,8 @@ class Job:
     # replika z Kokora nečekala za klonováním na GPU.
     lane: str = ""
     sample_rate: int = 44100
+    # Jen TTS: řeč na mřížce (app/tts/rhythm.py); None = obyčejné čtení.
+    rhythm: Any = None
 
     @property
     def queue(self) -> str:
@@ -186,7 +188,12 @@ class Runner:
                 var_dir.mkdir()
                 try:
                     gen_started = time.monotonic()
-                    raw = backend.generate(spec, var_dir)
+                    if job.rhythm is not None:
+                        from .tts.rhythm import generate_on_grid
+
+                        raw = generate_on_grid(backend.generate, spec, job.rhythm, var_dir)
+                    else:
+                        raw = backend.generate(spec, var_dir)
                     gen_s = time.monotonic() - gen_started
                     name = f"{idx:02d}.{job.fmt}"
                     extra = [(out_dir / f"{idx:02d}.{fmt}", fmt) for fmt in job.extra_formats]
@@ -201,7 +208,9 @@ class Runner:
                         # končí stopu doběhem do ticha, a to by prolnutí
                         # přeložilo na začátek smyčky — měřeno, šev pak skáče
                         # o 0,75 z rozsahu 0–1.
-                        trim=True,
+                        # Ne však u řeči na mřížce: pauza na konci poslední
+                        # fráze patří k taktu a navazující kus na ni počítá.
+                        trim=job.rhythm is None,
                         loop=job.loop,
                         crossfade_s=self.cfg.loop_crossfade_s,
                         # Jen u SFX: hudba smí vyjít kratší i delší, ale
