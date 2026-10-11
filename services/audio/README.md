@@ -138,6 +138,57 @@ Když GPU engine neběží (v profilu, kde na něj není paměť), `/v1/audio/tt
 vrátí hned **503** — ne job, který by spadl po frontě. Kokoro a Piper jsou
 nahoře pořád.
 
+### Řeč na mřížce (`rhythm`)
+
+```
+POST /v1/audio/tts  {…, "rhythm": {"bpm": 90, "style": "rap", "beats_per_bar": 4, "beat": true}}
+```
+
+Text se rozdělí na fráze po celých slovech, každá se namluví zvlášť, ořízne
+od ticha, natáhne na svůj počet dob (rubberband, tempo 0,75–1,5) a doplní
+pauzou do konce slotu. Výstup je dlouhý přesně `doby × 60/bpm` a konec se
+neořezává, takže navazující kus začne zase na první době. `beat: true`
+přimíchá klik s přízvukem na první době taktu. Bez `rhythm` se nic nemění.
+
+| style | slot (doby) | pauza | hustota | exaggeration / cfg_weight |
+|---|---|---|---|---|
+| spoken | 8 | 1 | 1,0 | 0,5 / 0,5 |
+| news | 8 | 0,5 | 1,1 | 0,3 / 0,6 |
+| slam | 8 | 3 | 0,85 | 0,9 / 0,4 |
+| rap | 4 | 0,5 | 1,25 | 1,0 / 0,3 |
+| preacher | 8 | 2 | 0,8 | 1,2 / 0,3 |
+
+Hodnoty stylů jsou návrh, poslechem zkalibrované nejsou. Při rychlém BPM se
+slot zdvojuje, dokud na řeč nezbývají aspoň 2 s. Manifest nese
+`variations[].runtime.rhythm` (fráze, doby, takty, tempo min/průměr/max,
+naměřené tempo řeči, `pieces` = slabiky, délka, tempo a doby každé fráze).
+
+**Není to flow.** Zarovnává se začátek a délka fráze, ne slabiky; přízvuky
+uvnitř padají tam, kam je položil engine. Proč to nejde jinak (měřeno
+2026-10-10, `app/tts/rhythm.py`):
+
+- Tvar textu rytmus neudělá: tentýž odstavec jako próza a rozsekaný čárkami
+  12,0 a 12,5 s; `exaggeration` 0,3–1,2 a `cfg_weight` 0,3–0,7 v rozmezí
+  11,3–13,1 s.
+- ACE-Step text nepřečte: z osmi řádků českého „rapu" jich v přepisu zůstaly
+  čtyři zkomolené, z osmi anglických jeden. Na „přečti článek" nepoužitelné.
+- Natažení srozumitelnost drží v celém rozsahu 0,7–1,6 (přepis Whisperem,
+  WER ≤ 0,07, atempo i rubberband); meze jsou užší kvůli přirozenosti.
+
+Co stálo ladění:
+
+- **Délka řeči není `slabiky / rychlost`.** Fráze má náběh a dotažení
+  (~0,8 s u klonu z Chatterboxu), takže krátká fráze vypadá jako pomalá řeč.
+  Dělení textu podle naivního odhadu fráze dál zkracovalo a čtení se rozpadlo
+  na 73 útržků. `fit_speech` proto prokládá přímku (náběh + slabiky/rychlost)
+  z frází, které už engine namluvil — Piper mluví ~6,5 slabik/s, klon ~5.
+- **Chatterbox na útržku halucinuje**: ze dvou slabik 27,7 s zvuku, z jedné
+  6 s. Fráze pod 5 slabik proto nevznikne, dokud je čím ji doplnit, a fráze
+  delší než dvojnásobek očekávání se namluví znovu s jiným seedem (nejvýš
+  2×), pak se usekne.
+- Každý request na engine stojí ~1,5 s navíc, takže čtení po frázích je
+  pomalejší než souvislé: článek o 600 znacích klonem 45–60 s (souvisle ~40 s).
+
 Pasti:
 
 - `hf download` s vyjmenovanými soubory **tiše ignoruje `--include`** —

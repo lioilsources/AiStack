@@ -124,6 +124,8 @@ GPU). Mají compose profily `tts` / `tts-gpu`, takže `make up-audio` je nezvedn
   jen Piper Kasandra (CC BY 4.0, uvést autora). Kokoro ani Chatterbox
   Multilingual česky neumí. Piper Jirka je dotrénovaný z lessac (Blizzard 2013,
   jen výzkum) → neověřené.
+- **Řeč na mřížce**: `rhythm {bpm, style, beat}` v `/v1/audio/tts` zarovná fráze
+  na doby (`app/tts/rhythm.py`). Zarovnává fráze, ne slabiky — flow to není.
 - Klon hlasu postavy: `POST /v1/audio/voices` (povinné `rights` + `source`).
 - GPU TTS **nikdy vedle directora**; build i testy jen v bezpečném okně
   (`PLAN-spark-scheduler.md` §3b). Do rozvrhu zatím nezařazené.

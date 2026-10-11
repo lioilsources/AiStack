@@ -41,6 +41,7 @@ from .schemas import (
 )
 from .store import Store
 from .tts import presets as tts_presets
+from .tts import rhythm as tts_rhythm
 from .tts.resolve import ResolveError, TtsPlan
 from .tts.resolve import resolve as resolve_tts
 from .tts.voicestore import MAX_UPLOAD_BYTES as VOICE_MAX_BYTES
@@ -520,6 +521,21 @@ def create_tts(req: TtsRequest, _: None = Depends(require_key)) -> JobAccepted:
         log.info("tts: engine %s nedostupný (%s)", plan.engine, detail)
         raise HTTPException(status_code=503, detail=tts_down_message(plan.engine))
 
+    rhythm = None
+    if req.rhythm is not None:
+        rhythm = tts_rhythm.Rhythm(**req.rhythm.model_dump())
+        # Rozdělit už tady: text, který nejde namluvit, nebo článek na
+        # stovky frází má skončit větou hned, ne jobem po frontě.
+        phrases = tts_rhythm.plan_phrases(req.text, rhythm, plan.language)
+        if not phrases:
+            raise HTTPException(status_code=422, detail="v textu není co číst")
+        if len(phrases) > tts_rhythm.MAX_PHRASES:
+            raise HTTPException(
+                status_code=422,
+                detail=f"text je na rytmické čtení moc dlouhý ({len(phrases)} frází, "
+                f"nejvýš {tts_rhythm.MAX_PHRASES}) — pošli ho po částech",
+            )
+
     params = req.params.model_dump(exclude_none=True)
     spec = TtsSpec(
         text=req.text.strip(),
@@ -565,6 +581,7 @@ def create_tts(req: TtsRequest, _: None = Depends(require_key)) -> JobAccepted:
             manifest=manifest,
             lane=plan.lane,
             sample_rate=CONFIG.tts_sample_rate,
+            rhythm=rhythm,
         )
     )
     return JobAccepted(job_id=job_id, queue_position=position)
