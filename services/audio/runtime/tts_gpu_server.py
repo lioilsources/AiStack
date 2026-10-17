@@ -192,21 +192,31 @@ def _xtts_synth(model: Any, req: SynthRequest, ref: Path | None, ref_key: str) -
         gpt_cond_latent, speaker_embedding = speakers[voice].values()
 
     p = req.params
-    out = model.inference(
-        req.text,
-        XTTS_LANG.get(req.language, req.language),
-        gpt_cond_latent,
-        speaker_embedding,
-        temperature=float(p.get("temperature", 0.75)),
-        top_p=float(p.get("top_p", 0.85)),
-        repetition_penalty=float(p.get("repetition_penalty", 10.0)),
-        speed=req.speed,
-        # XTTS má limit znaků na větu (čeština 186) — dělení si udělá sám.
-        enable_text_splitting=True,
-    )
-    wav = out["wav"]
-    wav = wav.detach().cpu().numpy() if isinstance(wav, torch.Tensor) else np.asarray(wav)
-    return wav.astype(np.float32).reshape(-1), 24000
+    lang = XTTS_LANG.get(req.language, req.language)
+    # XTTS má limit znaků na větu (čeština 186, angličtina 250). Vestavěné
+    # enable_text_splitting potřebuje spaCy (ImportError za běhu), takže text
+    # dělí stejný _split_text jako Chatterbox a kusy se skládají s pauzou.
+    limit = min(CHUNK_CHARS, int(getattr(model.tokenizer, "char_limits", {}).get(lang, 250)))
+    pieces = []
+    pause = np.zeros(int(CHUNK_PAUSE_S * 24000), dtype=np.float32)
+    for chunk in _split_text(req.text, limit):
+        out = model.inference(
+            chunk,
+            lang,
+            gpt_cond_latent,
+            speaker_embedding,
+            temperature=float(p.get("temperature", 0.75)),
+            top_p=float(p.get("top_p", 0.85)),
+            repetition_penalty=float(p.get("repetition_penalty", 10.0)),
+            speed=req.speed,
+            enable_text_splitting=False,
+        )
+        wav = out["wav"]
+        wav = wav.detach().cpu().numpy() if isinstance(wav, torch.Tensor) else np.asarray(wav)
+        if pieces:
+            pieces.append(pause)
+        pieces.append(wav.astype(np.float32).reshape(-1))
+    return np.concatenate(pieces), 24000
 
 
 # --- Chatterbox ---
