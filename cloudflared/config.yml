@@ -18,6 +18,15 @@ ingress:
   # (video-stack/serve.py, systemd video-api.service) běží na hostu :8096,
   # stejně jako ComfyUI → host.docker.internal. Musí být před obecným
   # llm.ol1n.com pravidlem; Go gateway nemá host bridge, proto se obchází.
+  # /v1/image/* → gen-queue: fronta ComfyUI jobů pro všechny projekty
+  # (PLAN-image-api.md), WD14 proxy. Auth = CF Access na llm.ol1n.com.
+  - hostname: llm.ol1n.com
+    path: /v1/image/.*
+    service: http://gen-queue:8091
+    originRequest:
+      connectTimeout: 30s
+      keepAliveTimeout: 300s
+
   - hostname: llm.ol1n.com
     path: /v1/video/.*
     service: http://host.docker.internal:8096

@@ -63,8 +63,19 @@ services:
       - UGC_NAS_URL=${UGC_NAS_URL:-http://192.168.88.88:8095}
       - UGC_CHECKPOINT=${UGC_CHECKPOINT:-Illustrious-XL-v2.0.safetensors}
       - UGC_SPOOL=/spool
+      # Veřejné image API /v1/image/* (PLAN-image-api.md). Okno = běžící
+      # ComfyUI; IMAGE_SCHEDULE musí sedět na SCHEDULE v drop-inu rag-schedule
+      # (jen uzávěrka 5 min před přepnutím a údaj o dalším okně).
+      - IMAGE_DATA=/data
+      - IMAGE_SCHEDULE=${IMAGE_SCHEDULE:-7:comfy 13:llm}
+      - IMAGE_PRIORITY=${IMAGE_PRIORITY:-storyteller,webtoon,promoclown,kirian,ugc}
+      - IMAGE_WD14_URL=${IMAGE_WD14_URL:-http://host.docker.internal:8097}
+      - IMAGE_THERMAL_CSV=/ops/thermal.csv
     volumes:
       - ugc-spool:/spool
+      # joby + výstupy, nic se automaticky nemaže
+      - ${IMAGE_API_DIR:-/home/ol1n/image-api}:/data
+      - /home/ol1n/ops:/ops:ro
     extra_hosts:
       - "host.docker.internal:host-gateway"
     ports:
