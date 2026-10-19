@@ -1,14 +1,18 @@
 package main
 
 import (
+	"context"
 	"log/slog"
 	"net/http"
 	"os"
 	"strconv"
+	"strings"
 	"time"
+	_ "time/tzdata" // alpine image has no zoneinfo; the comfy window is Prague time
 
 	"github.com/ol1n/AiStack/gen-queue/internal/api"
 	"github.com/ol1n/AiStack/gen-queue/internal/backend"
+	"github.com/ol1n/AiStack/gen-queue/internal/comfyq"
 	"github.com/ol1n/AiStack/gen-queue/internal/queue"
 	"github.com/ol1n/AiStack/gen-queue/internal/store"
 	"github.com/ol1n/AiStack/gen-queue/internal/ugc"
@@ -78,6 +82,13 @@ func main() {
 	})
 	api.RegisterUGC(mux, ugcPipe)
 
+	// Veřejné image API (PLAN-image-api.md): /v1/image/* na llm.ol1n.com,
+	// jeden globální worker pro ComfyUI, joby čekají na okno comfy.
+	if err := registerImageAPI(mux); err != nil {
+		slog.Error("image api", "err", err)
+		os.Exit(1)
+	}
+
 	slog.Info("gen-queue ready",
 		"addr", addr,
 		"nim_kontext", nimKontextURL,
@@ -93,4 +104,49 @@ func main() {
 		slog.Error("server error", "err", err)
 		os.Exit(1)
 	}
+}
+
+func registerImageAPI(mux *http.ServeMux) error {
+	loc, err := time.LoadLocation(envOr("IMAGE_TZ", "Europe/Prague"))
+	if err != nil {
+		return err
+	}
+	// Stejný řetězec jako SCHEDULE v drop-inu rag-schedule; jen pro uzávěrku
+	// před přepnutím a údaj o dalším okně. Zdroj pravdy je běžící ComfyUI.
+	sched, err := comfyq.ParseSchedule(envOr("IMAGE_SCHEDULE", "7:comfy 13:llm"))
+	if err != nil {
+		return err
+	}
+	store, err := comfyq.OpenStore(envOr("IMAGE_DATA", "/data"))
+	if err != nil {
+		return err
+	}
+	client := comfyq.NewClient(envOr("IMAGE_COMFY_URL", envOr("UGC_COMFY_URL", "http://host.docker.internal:8188")))
+	gate := &comfyq.Gate{
+		Comfy:      client,
+		Schedule:   sched,
+		Loc:        loc,
+		Cutoff:     time.Duration(envInt("IMAGE_CUTOFF_MINUTES", 5)) * time.Minute,
+		ThermalCSV: envOr("IMAGE_THERMAL_CSV", "/ops/thermal.csv"),
+		MaxGPUC:    float64(envInt("IMAGE_MAX_GPU_C", 87)),
+		MaxZoneC:   float64(envInt("IMAGE_MAX_ZONE_C", 98)),
+		CacheTTL:   5 * time.Second,
+	}
+	q := comfyq.NewQueue(comfyq.Config{
+		Priority:    strings.Split(envOr("IMAGE_PRIORITY", "storyteller,webtoon,promoclown,kirian,ugc"), ","),
+		JobTimeout:  time.Duration(envInt("IMAGE_JOB_TIMEOUT_MINUTES", 60)) * time.Minute,
+		MaxAttempts: envInt("IMAGE_MAX_ATTEMPTS", 5),
+		Backoff:     []time.Duration{30 * time.Second, 2 * time.Minute, 5 * time.Minute},
+		LostAfter:   90 * time.Second,
+		PollEvery:   2 * time.Second,
+		IdleEvery:   15 * time.Second,
+	}, store, gate, client)
+	go q.Run(context.Background())
+	(&comfyq.API{
+		Q:    q,
+		WD14: envOr("IMAGE_WD14_URL", "http://host.docker.internal:8097"),
+		HTTP: &http.Client{Timeout: 2 * time.Minute},
+	}).Register(mux)
+	slog.Info("image api ready", "schedule", sched, "data", envOr("IMAGE_DATA", "/data"))
+	return nil
 }
