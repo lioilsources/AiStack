@@ -17,6 +17,9 @@ pillow==12.2.0
 imageio==2.37.3
 descript-audiotools==0.7.2
 accelerate==1.13.0
+# Stable Audio Open: diffusers bere CosineDPMSolverMultistepScheduler, ten bez
+# torchsde spadne až při načtení modelu (HTTP 500), MOSS ho nepotřebuje.
+torchsde==0.2.6
 
 # Wrapper.
 fastapi==0.118.0
