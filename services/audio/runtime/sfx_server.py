@@ -131,8 +131,37 @@ def _load_moss(name: str, path: str) -> _Loaded:
     return _Loaded(name, pipe, sample_rate=48000)
 
 
+def _patch_brownian_tree() -> None:
+    """Zabrání nekonečné rekurzi torchsde u Stable Audio Open.
+
+    CosineDPMSolverMultistepScheduler drží sigmy ve float32, takže poslední
+    krok se ptá na šum mezi 0,30000001 a 0 (a první nad 500). BrownianInterval
+    s halfway_tree a tol=1e-6 pak interval kratší než tol dělí donekonečna
+    (RecursionError, změřeno 2026-10-19). Dotaz se ořízne do [t0, t1] a pod
+    toleranci vrátí nulový šum — na posledním kroku (sigma_next = 0) se šum
+    stejně násobí nulou, sampler ani výsledek se nemění.
+    """
+    from diffusers.schedulers import scheduling_dpmsolver_sde as sde
+
+    if getattr(sde.BatchedBrownianTree, "_aistack_patched", False):
+        return
+    orig = sde.BatchedBrownianTree.__call__
+
+    def call(self, t0, t1):
+        lo, hi = self.trees[0]._start, self.trees[0]._end
+        a, b = (min(max(float(t), lo), hi) for t in (t0, t1))
+        if abs(a - b) < 1e-5:
+            return orig(self, lo, lo + 1e-3) * 0
+        return orig(self, a, b)
+
+    sde.BatchedBrownianTree.__call__ = call
+    sde.BatchedBrownianTree._aistack_patched = True
+
+
 def _load_stable_audio(name: str, path: str) -> _Loaded:
     from diffusers import StableAudioPipeline
+
+    _patch_brownian_tree()
 
     pipe = StableAudioPipeline.from_pretrained(path, torch_dtype=torch.float16)
     pipe = pipe.to(DEVICE)
