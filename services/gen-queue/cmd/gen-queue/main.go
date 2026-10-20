@@ -13,6 +13,7 @@ import (
 	"github.com/ol1n/AiStack/gen-queue/internal/api"
 	"github.com/ol1n/AiStack/gen-queue/internal/backend"
 	"github.com/ol1n/AiStack/gen-queue/internal/comfyq"
+	"github.com/ol1n/AiStack/gen-queue/internal/portal"
 	"github.com/ol1n/AiStack/gen-queue/internal/queue"
 	"github.com/ol1n/AiStack/gen-queue/internal/store"
 	"github.com/ol1n/AiStack/gen-queue/internal/ugc"
@@ -99,6 +100,25 @@ func main() {
 		"infer_timeout", inferTimeout,
 		"disable_safety_checker", disableSafety,
 	)
+
+	// comfyportal.ol1n.com: ComfyUI pro mobilní appku s Bearer tokenem
+	// (comfyui.ol1n.com je za CF Access, appka umí jen Authorization).
+	// Bez COMFY_PORTAL_TOKEN se neposlouchá vůbec.
+	px, err := portal.New(envOr("PORTAL_COMFY_URL", envOr("UGC_COMFY_URL", "http://host.docker.internal:8188")), os.Getenv("COMFY_PORTAL_TOKEN"))
+	if err != nil {
+		slog.Error("portal", "err", err)
+		os.Exit(1)
+	}
+	if px != nil {
+		portalAddr := envOr("PORTAL_ADDR", ":8092")
+		go func() {
+			slog.Info("comfy portal ready", "addr", portalAddr)
+			if err := http.ListenAndServe(portalAddr, px); err != nil {
+				slog.Error("portal server error", "err", err)
+				os.Exit(1)
+			}
+		}()
+	}
 
 	if err := http.ListenAndServe(addr, mux); err != nil {
 		slog.Error("server error", "err", err)

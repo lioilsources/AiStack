@@ -68,6 +68,17 @@ ingress:
         audTag:
           - 4bc655c0fec0da2ff6a4922a9fc042db2646efb020054735c365ac4cbad29a0b
 
+  # comfyportal.ol1n.com → gen-queue :8092, ComfyUI pro mobilní appku ComfyUI
+  # Portal. Appka umí jen "Authorization: Bearer", ne CF Access service token,
+  # proto bez access bloku — token kontroluje gen-queue (COMFY_PORTAL_TOKEN).
+  # Mimo okno comfy (7–13) vrací 503. DNS: route dns <tunnel> comfyportal.ol1n.com
+  - hostname: comfyportal.ol1n.com
+    service: http://gen-queue:8092
+    originRequest:
+      connectTimeout: 30s
+      tcpKeepAlive: 30s
+      keepAliveTimeout: 300s
+
   # chat.ol1n.com → knihovní RAG chatbot (WorldLibraryProject rag/server.py :8090).
   # Server běží na SPARK hostu → host.docker.internal (stejný vzor jako ComfyUI);
   # pokud poběží na M2, nahraď service za http://<M2-LAN-IP>:8090.
