@@ -49,7 +49,7 @@ def load(model_dir: Path, suite: str) -> dict[str, dict]:
 
 def score_model(d: Path) -> dict[str, str]:
     row: dict[str, str] = {}
-    ok = lambda r: not r.get("error") and r.get("content")  # noqa: E731
+    ok = lambda r: bool(not r.get("error") and r.get("content"))  # noqa: E731
 
     a1, gold = load(d, "a1"), {r["id"]: r for r in read_jsonl(SUITES / "a1_law.jsonl")} if (SUITES / "a1_law.jsonl").exists() else {}
     if a1:
