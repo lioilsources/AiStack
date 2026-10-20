@@ -1,8 +1,10 @@
 package portal
 
 import (
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -67,5 +69,50 @@ func TestComfyDown(t *testing.T) {
 	p.ServeHTTP(rec, req)
 	if rec.Code != 503 {
 		t.Errorf("ComfyUI dole: %d, chci 503", rec.Code)
+	}
+}
+
+func TestSaveName(t *testing.T) {
+	var seenBody string
+	comfy := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		b, _ := io.ReadAll(r.Body)
+		seenBody = string(b)
+	}))
+	defer comfy.Close()
+	p, _ := New(comfy.URL, "s3cret")
+	srv := httptest.NewServer(p)
+	defer srv.Close()
+
+	cases := []struct {
+		body string
+		want int
+	}{
+		{`{"workflow":"{}","name":"moje.json"}`, 200},
+		{`{"workflow":"{}"}`, 200},
+		{`{"workflow":"{}","name":"../../x"}`, 400},
+		{`{"workflow":"{}","name":"/home/ol1n/x"}`, 400},
+		{`{"workflow":"{}","name":"..\\x"}`, 400},
+		{`{"workflow":"{}","name":".bashrc"}`, 400},
+		{`{"workflow":"{}","name":""}`, 400},
+		{`nejson`, 400},
+	}
+	for _, c := range cases {
+		seenBody = ""
+		req, _ := http.NewRequest("POST", srv.URL+"/cpe/workflow/save", strings.NewReader(c.body))
+		req.Header.Set("Authorization", "Bearer s3cret")
+		res, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		res.Body.Close()
+		if res.StatusCode != c.want {
+			t.Errorf("%s: %d, chci %d", c.body, res.StatusCode, c.want)
+		}
+		if c.want == 200 && seenBody != c.body {
+			t.Errorf("tělo do ComfyUI: %q", seenBody)
+		}
+		if c.want != 200 && seenBody != "" {
+			t.Errorf("%s prošlo do ComfyUI", c.body)
+		}
 	}
 }

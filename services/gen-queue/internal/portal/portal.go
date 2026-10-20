@@ -9,7 +9,10 @@
 package portal
 
 import (
+	"bytes"
 	"crypto/subtle"
+	"encoding/json"
+	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httputil"
@@ -70,5 +73,43 @@ func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "unauthorized", http.StatusUnauthorized)
 		return
 	}
+	if r.URL.Path == "/cpe/workflow/save" && !p.safeSave(w, r) {
+		return
+	}
 	p.rp.ServeHTTP(w, r)
+}
+
+// maxSaveBody omezuje tělo /cpe/workflow/save (workflow JSON má desítky kB).
+const maxSaveBody = 16 << 20
+
+// safeSave hlídá díru v comfy-portal-endpoint 1.2.1: /cpe/workflow/save
+// skládá cestu os.path.join(workflow_dir, name) bez kontroly, takže "../x"
+// nebo absolutní cesta zapíše .json kamkoli. Pouštíme jen holé jméno souboru.
+// Tělo po přečtení vrací zpátky do requestu.
+func (p *Proxy) safeSave(w http.ResponseWriter, r *http.Request) bool {
+	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, maxSaveBody))
+	r.Body.Close()
+	if err != nil {
+		http.Error(w, "tělo je moc velké", http.StatusRequestEntityTooLarge)
+		return false
+	}
+	var req struct {
+		Name *string `json:"name"`
+	}
+	if err := json.Unmarshal(body, &req); err != nil {
+		http.Error(w, "neplatný JSON", http.StatusBadRequest)
+		return false
+	}
+	if req.Name != nil && !safeName(*req.Name) {
+		slog.Warn("portal: odmítnuto jméno workflow", "name", *req.Name)
+		http.Error(w, "jméno workflow nesmí obsahovat cestu", http.StatusBadRequest)
+		return false
+	}
+	r.Body = io.NopCloser(bytes.NewReader(body))
+	r.ContentLength = int64(len(body))
+	return true
+}
+
+func safeName(n string) bool {
+	return n != "" && !strings.ContainsAny(n, "/\\\x00") && !strings.HasPrefix(n, ".")
 }
