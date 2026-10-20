@@ -71,6 +71,9 @@ services:
       - IMAGE_PRIORITY=${IMAGE_PRIORITY:-storyteller,webtoon,promoclown,kirian,ugc}
       - IMAGE_WD14_URL=${IMAGE_WD14_URL:-http://host.docker.internal:8097}
       - IMAGE_THERMAL_CSV=/ops/thermal.csv
+      # comfyportal.ol1n.com → :8092, ComfyUI pro appku ComfyUI Portal (Bearer
+      # token místo CF Access). Prázdný token = proxy vypnutá.
+      - COMFY_PORTAL_TOKEN=${COMFY_PORTAL_TOKEN:-}
     volumes:
       - ugc-spool:/spool
       # joby + výstupy, nic se automaticky nemaže
