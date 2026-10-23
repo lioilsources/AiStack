@@ -158,6 +158,14 @@ jako `openclaw-default`. OpenClaw gateway běží na hostu a volá `http://127.0
   okno zůstalo bez modelu).
 - `make download-agent` → `make up-agent` → `curl localhost:8040/v1/models`.
 
+## spark-broker — kdo smí SPARK přepínat (`services/spark-broker`)
+
+Fronta úloh pro všechny projekty: okno na vyžádání, jinak priorita. Sessions volají
+jen jeho API (`sparkctl`), nikdy nespouštějí kontejnery samy. Profily (comfy, llm, gemma,
+director, gptoss) a doplňky (audio-music, audio-sfx) jsou v `~/spark-broker/config.yaml`
+na SPARKu; `rag-schedule.sh` zůstává jako provisioner profilů. V režimu `control` broker
+odmítne start, dokud běží `rag-schedule.timer`. Detaily: `services/spark-broker/README.md`.
+
 ## Porty (vše `127.0.0.1` pokud není uvedeno)
 
 | port | kontejner | poznámka |
@@ -187,6 +195,7 @@ jako `openclaw-default`. OpenClaw gateway běží na hostu a volá `http://127.0
 | 8080 | gateway | `0.0.0.0`, veřejný přes Cloudflare |
 | 8090 | controller | Go service |
 | 8188 | ComfyUI | host-native, mimo Docker |
+| 8100 | spark-broker | `0.0.0.0`, host-native (user systemd) — fronta úloh SPARKu |
 
 ## Důležitá varování
 

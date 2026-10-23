@@ -1,0 +1,83 @@
+# spark-broker — katalog SPARKu. Na SPARKu leží jako ~/spark-broker/config.yaml.
+# Pravidla z incidentů jsou tady jako data: služba, která v profilu není, s ním
+# neběží (ComfyUI nikdy vedle LLM ≥ 30 GiB, director a gpt-oss vždy samy).
+
+# Pořadí: profil se hledá v tomhle pořadí (první, který služby úlohy pokryje),
+# a v tomhle pořadí se zkouší detect. Detect musí být navzájem výlučné.
+profile_order: [comfy, llm, gemma, director, gptoss]
+
+profiles:
+  comfy:   # ComfyUI (~52 GiB) + flux-schnell NIM (17) + TTS
+    services: [comfyui, flux-schnell, tts]
+    up: ~/deploy/WorldLibraryProject/deploy/spark/rag-schedule.sh comfy
+    detect: systemctl --user is-active --quiet comfyui
+    switch_min: 2
+  llm:     # qwen36-agent (36,5) + flux-schnell (17) + TTS
+    services: [qwen36, flux-schnell, tts]
+    up: ~/deploy/WorldLibraryProject/deploy/spark/rag-schedule.sh llm
+    detect: '! systemctl --user is-active --quiet comfyui && [ "$(docker inspect -f {{.State.Running}} qwen36-agent 2>/dev/null)" = true ]'
+    switch_min: 3
+  gemma:   # Gemma-4 (util 0.40 ≈ 49) + flux-schnell — agent Právníka
+    services: [gemma, flux-schnell]
+    up: ~/deploy/WorldLibraryProject/deploy/spark/rag-schedule.sh gemma
+    down: docker rm -f bench-gemma
+    detect: '[ "$(docker inspect -f {{.State.Running}} bench-gemma 2>/dev/null)" = true ]'
+    up_timeout: 25m
+    switch_min: 8
+  director: # swarm-director 0.75 (91 GiB) sám; noční dávky NEspouští (ty jsou úlohy brokera)
+    services: [director]
+    up: DIRECTOR_JOBS=none ~/deploy/WorldLibraryProject/deploy/spark/rag-schedule.sh director
+    down: cd ~/deploy/AiStack && make down-swarm-director
+    detect: '[ "$(docker inspect -f {{.State.Running}} swarm-director 2>/dev/null)" = true ]'
+    switch_min: 4
+  gptoss:  # gpt-oss-120b (util 0.65 ≈ 81 GiB) sám, v LiteLLM jako "lab"
+    services: [gptoss]
+    up: ~/spark-broker/profiles/gptoss-up.sh
+    down: docker rm -f bench-gptoss
+    detect: '[ "$(docker inspect -f {{.State.Running}} bench-gptoss 2>/dev/null)" = true ]'
+    up_timeout: 25m
+    switch_min: 3
+
+# Doplňky: dají se přidat k profilu na vyžádání a broker je shodí, když je nikdo nechce.
+addons:
+  audio-music:   # ACE-Step 1.5 — v comfy se samo nestartuje (6. 10.), jen na vyžádání
+    profiles: [comfy]
+    up: docker start audio-music && for i in $(seq 60); do curl -sf -m5 localhost:8093/v1/audio/models | grep -q '"name":"acestep-v15-turbo"[^}]*"available":true' && exit 0; sleep 10; done; exit 1
+    down: docker stop audio-music
+    detect: '[ "$(docker inspect -f {{.State.Running}} audio-music 2>/dev/null)" = true ]'
+    mem_gib: 12
+    max_jobs: 1
+  audio-sfx:
+    profiles: [comfy]
+    up: docker start audio-sfx && sleep 20
+    down: docker stop audio-sfx
+    detect: '[ "$(docker inspect -f {{.State.Running}} audio-sfx 2>/dev/null)" = true ]'
+    mem_gib: 12
+    max_jobs: 1
+
+# Strop priority, který si projekt smí dát sám (víc = dotaz na uživatele).
+# 0 = backlog, 90 PromoClown, 100 = okno uživatele (on_behalf_of_user).
+projects:
+  storyteller: {max: 50}
+  toyshaders: {max: 40}
+  library: {max: 40}
+  lawyer: {max: 40}
+  kindlify: {max: 30}
+  webtoon: {max: 30}
+  kirian: {max: 30}
+  chrestys: {max: 30}
+  aiswarmbattle: {max: 20}
+  promoclown: {max: 90}
+default_project_max: 20
+
+# Přechodné pevné rezervace pro klienty, kteří broker zatím volat neumí.
+# PromoClown heartbeat (OpenClaw activeHours) potřebuje qwen36; až si o něj
+# řekne sám přes POST /v1/jobs, tahle položka zmizí.
+recurring:
+  - {name: promoclown-heartbeat, project: promoclown, services: [qwen36], from: "17:05", to: "00:55", priority: 90}
+
+mem_reserve_gib: 8
+temp_pause_c: 87
+comfy_url: http://127.0.0.1:8188
+notify_cmd: ~/deploy/WorldLibraryProject/deploy/spark/notify.sh
+log_dir: ~/spark-broker/logs
