@@ -15,7 +15,9 @@
 #   sparkctl prio <id> <priorita>                     změna priority (nad strop projektu = dotaz na uživatele)
 #   sparkctl approve <id>                             schválit prioritu nad strop — JEN na výslovný pokyn uživatele
 #   sparkctl cancel <id>
-#   sparkctl jobs [projekt]                           moje úlohy (i hotové)
+#   sparkctl ls [projekt]                             přehled: co běží, fronta, priority, kolik zbývá, proč čeká
+#   sparkctl get <id>                                 detail úlohy (JSON)
+#   sparkctl jobs [projekt]                           všechny úlohy i hotové (JSON)
 #   sparkctl pause | resume
 #
 # Služby víc najednou oddělit čárkou: comfyui,audio-music. Adresa: $SPARK_BROKER
@@ -75,6 +77,35 @@ case "$cmd" in
   status)  api GET /v1/status ;;
   catalog) api GET /v1/catalog ;;
   jobs)    api GET "/v1/jobs?all=1${1:+&project=$1}" ;;
+  get)     api GET "/v1/jobs/$1" ;;
+  ls|list)
+    { api GET /v1/status; echo; api GET "/v1/jobs?all=1${1:+&project=$1}"; } | python3 -c '
+import json,sys,datetime as dt
+raw=sys.stdin.read(); D=json.JSONDecoder(); st,i=D.raw_decode(raw); jobs=D.raw_decode(raw[i:].lstrip())[0] or []
+now=dt.datetime.now(dt.timezone.utc)
+def t(s): return dt.datetime.fromisoformat(s[:26]+s[-6:]) if s else None
+def mins(d): m=int(d.total_seconds()//60); return f"{m//60}h{m%60:02d}" if m>=60 else f"{m}m"
+p=st.get("probe") or {}
+print(f"SPARK {st["mode"]}: profil {st["profile"]}" + (f" + {",".join(st["addons"])}" if st.get("addons") else "") +
+      f" · volno {p.get("mem_available_gib")} GiB · GPU {p.get("gpu_temp_c")} °C {p.get("gpu_util")} %" + (" · POZASTAVENO" if st.get("paused") else ""))
+act=[j for j in jobs if j["state"] in ("running","draining","queued")]
+done=[j for j in jobs if j["state"] not in ("running","draining","queued")][-5:]
+if not act: print("fronta prázdná")
+for j in sorted(act,key=lambda j:(j["state"]!="running",-j["priority"],j["created"])):
+    sg=j["stages"][min(j["stage_idx"],len(j["stages"])-1)]
+    info=""
+    if j["state"] in ("running","draining"):
+        lu=t(j.get("lease_until"))
+        info=(f"zbývá {mins(lu-now)}" if lu else f"běží {mins(now-t(j["stage_started"]))}")
+    else:
+        info="čeká: "+(j.get("waiting") or "")
+    pend=f"→{j["pending_priority"]}?" if j.get("pending_priority") else ""
+    print(f"  {j["state"]:8} {j["id"]:8} p{j["priority"]}{pend:5} {j["project"]}: {j["title"]} [{",".join(sg["services"])}] stage {j["stage_idx"]+1}/{len(j["stages"])} · {info}")
+if done:
+    print("naposledy skončené:")
+    for j in done:
+        f=t(j.get("finished")); print(f"  {j["state"]:9} {j["id"]:8} {j["project"]}: {j["title"]}" + (f" ({f.astimezone().strftime("%H:%M")})" if f else "") + (f" — {j["error"]}" if j.get("error") else ""))
+' ;;
   window)
     [ $# -ge 3 ] || { echo 'sparkctl window <služby> <délka> "<doslovná slova uživatele>"' >&2; exit 2; }
     id="$(submit "{\"project\":\"user\",\"session\":$(js "$SESSION"),\"title\":$(js "okno $1"),\"on_behalf_of_user\":true,\"user_quote\":$(js "$3"),\"stages\":[{\"services\":$(svcs "$1"),\"mode\":\"lease\",\"lease_min\":$(minutes "$2")}]}")"
