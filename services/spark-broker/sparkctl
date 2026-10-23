@@ -72,40 +72,70 @@ wait_running() {
   done
 }
 
+overview() { # [projekt] — lidský přehled fronty
+  { api GET /v1/status; api GET "/v1/jobs?all=1${1:+&project=$1}"; } | python3 -c "$(cat <<'PY'
+import json, re, sys
+from datetime import datetime, timezone
+
+raw = sys.stdin.read()
+dec = json.JSONDecoder()
+status, end = dec.raw_decode(raw)
+jobs = dec.raw_decode(raw[end:].lstrip())[0] or []
+now = datetime.now(timezone.utc)
+
+def when(s):
+    # Go píše 0–9 desetinných míst; Python bere nejvýš 6
+    return datetime.fromisoformat(re.sub(r"(\.\d{6})\d*", r"\1", s)) if s else None
+
+def span(d):
+    m = max(0, int(d.total_seconds() // 60))
+    return f"{m // 60}h{m % 60:02d}" if m >= 60 else f"{m}m"
+
+p = status.get("probe") or {}
+head = f"SPARK {status['mode']}: profil {status['profile']}"
+if status.get("addons"):
+    head += " + " + ",".join(status["addons"])
+head += f" · volno {p.get('mem_available_gib')} GiB · GPU {p.get('gpu_temp_c')} °C {p.get('gpu_util')} %"
+if status.get("paused"):
+    head += " · POZASTAVENO"
+print(head)
+
+live = [j for j in jobs if j["state"] in ("running", "draining", "queued")]
+ended = [j for j in jobs if j not in live][-5:]
+if not live:
+    print("fronta prázdná")
+for j in sorted(live, key=lambda j: (j["state"] != "running", -j["priority"], j["created"])):
+    stage = j["stages"][min(j["stage_idx"], len(j["stages"]) - 1)]
+    if j["state"] == "queued":
+        info = "čeká: " + (j.get("waiting") or "")
+    elif j.get("lease_until"):
+        info = "zbývá " + span(when(j["lease_until"]) - now)
+    else:
+        info = "běží " + span(now - when(j["stage_started"]))
+    prio = f"p{j['priority']}" + (f"→{j['pending_priority']}?" if j.get("pending_priority") else "")
+    print(f"  {j['state']:8} {j['id']:8} {prio:6} {j['project']}: {j['title']} [{','.join(stage['services'])}]"
+          f" {j['stage_idx'] + 1}/{len(j['stages'])} · {info}")
+if ended:
+    print("naposledy skončené:")
+    for j in ended:
+        f = when(j.get("finished"))
+        line = f"  {j['state']:9} {j['id']:8} {j['project']}: {j['title']}"
+        if f:
+            line += f" ({f.astimezone():%H:%M})"
+        if j.get("error"):
+            line += f" — {j['error']}"
+        print(line)
+PY
+)"
+}
+
 cmd="${1:-status}"; shift || true
 case "$cmd" in
   status)  api GET /v1/status ;;
   catalog) api GET /v1/catalog ;;
   jobs)    api GET "/v1/jobs?all=1${1:+&project=$1}" ;;
   get)     api GET "/v1/jobs/$1" ;;
-  ls|list)
-    { api GET /v1/status; echo; api GET "/v1/jobs?all=1${1:+&project=$1}"; } | python3 -c '
-import json,sys,datetime as dt
-raw=sys.stdin.read(); D=json.JSONDecoder(); st,i=D.raw_decode(raw); jobs=D.raw_decode(raw[i:].lstrip())[0] or []
-now=dt.datetime.now(dt.timezone.utc)
-def t(s): return dt.datetime.fromisoformat(s[:26]+s[-6:]) if s else None
-def mins(d): m=int(d.total_seconds()//60); return f"{m//60}h{m%60:02d}" if m>=60 else f"{m}m"
-p=st.get("probe") or {}
-print(f"SPARK {st["mode"]}: profil {st["profile"]}" + (f" + {",".join(st["addons"])}" if st.get("addons") else "") +
-      f" · volno {p.get("mem_available_gib")} GiB · GPU {p.get("gpu_temp_c")} °C {p.get("gpu_util")} %" + (" · POZASTAVENO" if st.get("paused") else ""))
-act=[j for j in jobs if j["state"] in ("running","draining","queued")]
-done=[j for j in jobs if j["state"] not in ("running","draining","queued")][-5:]
-if not act: print("fronta prázdná")
-for j in sorted(act,key=lambda j:(j["state"]!="running",-j["priority"],j["created"])):
-    sg=j["stages"][min(j["stage_idx"],len(j["stages"])-1)]
-    info=""
-    if j["state"] in ("running","draining"):
-        lu=t(j.get("lease_until"))
-        info=(f"zbývá {mins(lu-now)}" if lu else f"běží {mins(now-t(j["stage_started"]))}")
-    else:
-        info="čeká: "+(j.get("waiting") or "")
-    pend=f"→{j["pending_priority"]}?" if j.get("pending_priority") else ""
-    print(f"  {j["state"]:8} {j["id"]:8} p{j["priority"]}{pend:5} {j["project"]}: {j["title"]} [{",".join(sg["services"])}] stage {j["stage_idx"]+1}/{len(j["stages"])} · {info}")
-if done:
-    print("naposledy skončené:")
-    for j in done:
-        f=t(j.get("finished")); print(f"  {j["state"]:9} {j["id"]:8} {j["project"]}: {j["title"]}" + (f" ({f.astimezone().strftime("%H:%M")})" if f else "") + (f" — {j["error"]}" if j.get("error") else ""))
-' ;;
+  ls|list) overview "${1:-}" ;;
   window)
     [ $# -ge 3 ] || { echo 'sparkctl window <služby> <délka> "<doslovná slova uživatele>"' >&2; exit 2; }
     id="$(submit "{\"project\":\"user\",\"session\":$(js "$SESSION"),\"title\":$(js "okno $1"),\"on_behalf_of_user\":true,\"user_quote\":$(js "$3"),\"stages\":[{\"services\":$(svcs "$1"),\"mode\":\"lease\",\"lease_min\":$(minutes "$2")}]}")"
