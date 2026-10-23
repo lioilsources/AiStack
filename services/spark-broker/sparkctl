@@ -43,6 +43,10 @@ import json,sys
 try: d=json.load(sys.stdin)
 except ValueError: d={}
 print((d.get(sys.argv[1]) if isinstance(d, dict) else '') or '')" "$1"; }
+ok() { # odpověď API → stdout; chyba (pole "error" bez "id") → stderr a exit 1, ať si toho skript všimne
+  if printf '%s' "$1" | python3 -c "import json,sys; d=json.load(sys.stdin); sys.exit(0 if isinstance(d,dict) and 'id' in d else 1)" 2>/dev/null
+  then printf '%s\n' "$1"; else printf '%s\n' "$1" >&2; return 1; fi
+}
 minutes() { # 3h / 90m / 90
   case "$1" in *h) echo $(( ${1%h} * 60 ));; *m) echo "${1%m}";; *) echo "$1";; esac
 }
@@ -149,8 +153,8 @@ case "$cmd" in
     id="$(submit "{\"project\":$(js "$1"),\"session\":$(js "$SESSION"),\"title\":$(js "${5:-$4}"),\"priority\":$3,\"resume\":true,\"stages\":[{\"services\":$(svcs "$2"),\"mode\":\"run\",\"command\":$(js "$4")}]}")"
     echo "$id" ;;
   wait)    wait_running "$1" ;;
-  hb)      api POST "/v1/jobs/$1/heartbeat" "{\"metrics\":${2:-{\}}}" >/dev/null ;;
-  done)    api POST "/v1/jobs/$1/done" "{\"metrics\":${2:-{\}}}" ;;
+  hb)      ok "$(api POST "/v1/jobs/$1/heartbeat" "{\"metrics\":${2:-null}}")" >/dev/null ;;
+  done)    ok "$(api POST "/v1/jobs/$1/done" "{\"metrics\":${2:-null}}")" ;;
   fail)    api POST "/v1/jobs/$1/done" "{\"error\":$(js "$2")}" ;;
   extend)  api POST "/v1/jobs/$1/extend?minutes=${2:-30}" ;;
   prio)    api PATCH "/v1/jobs/$1" "{\"priority\":$2}" ;;
