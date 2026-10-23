@@ -162,6 +162,12 @@ model_list:
   # (rag-schedule.sh gemma), jinak fallback na qwen36 — bench C1 92/100 %, injection 100 %.
   - model_name: pravnik-agent
     litellm_params: {model: openai/gemma, api_base: "http://bench-gemma:8000/v1", api_key: dummy, timeout: 900, temperature: 0.2}
+  # Soudce relačních kritérií FineTuneGallery (Prompts/PLAN-vl-judge.md):
+  # qwen36 vidí, běží v okně llm 17–01. Temperature 0 a thinking off, aby šel
+  # verdikt zopakovat; bez fallbacku — jiný model = jiná verze soudce = nová
+  # kalibrace κ, ne tichá záměna pod stejným jménem.
+  - model_name: judge
+    litellm_params: {model: openai/qwen36-agent, api_base: "http://qwen36-agent:8000/v1", api_key: dummy, timeout: 300, temperature: 0, extra_body: {chat_template_kwargs: {enable_thinking: false}}}
   # VL soudce pro ShaderGen v2 (Fáze 5) — deploy/docker-compose.vl.yaml
   - model_name: vl
     litellm_params: {model: openai/vl, api_base: "http://vl:8000/v1", api_key: dummy, timeout: 300, temperature: 0.1}

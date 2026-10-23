@@ -105,6 +105,7 @@ Paměť skutečná (`free -g` po startu + při 4 souběžných), tok/s jeden str
 
 ## 4. Harness
 
+- Podmínky hardwaru SPARKu (chlazení, strop taktu GPU `nvidia-smi -lgc 300,2100` od 2026-10-17) – každý běh je musí uvést; běhy do 2026-10-16 byly bez stropu.
 - `AiStack/bench/` (nové): `bench.py` (Python, httpx → `:8080`, sady v `bench/suites/*.jsonl`, výsledky `bench/results/<model>/<suite>_<datum>.jsonl`, souhrn `bench/results/summary.md`), `rate.py` (slepé párové hodnocení v terminálu, anonymizované pořadí, zapisuje `ratings.jsonl`), `suites/` (A1 generuje z `golden_law_v2` + `/search`, A2/A4/C2/C4 ručně napsané, B přes MirrorBooth pipeline).
 - Import: `storyteller/rag/rag/filters.py` (čeština), `WorldLibraryProject/rag/agent` (C1), `MirrorBooth/pipeline` (B).
 - `deploy/litellm_config.yaml`: aliasy `bench-*`, `vl`, `llama33`; `deploy/docker-compose.vl.yaml` (Qwen2.5-VL-7B, vLLM, util 0,18, `--limit-mm-per-prompt image=2`).

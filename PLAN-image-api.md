@@ -1,7 +1,7 @@
 # PLAN-image-api.md — veřejné API pro ComfyUI a WD14 na SPARKu
 
 Stav 2026-10-19. Podnět: Webtoon backend má běžet mimo domácí síť (mobilní aplikace), ale dnes volá ComfyUI
-(`192.168.88.66:8188`) a WD14 (`:8097`) přímo po LAN. `comfyui.ol1n.com` je syrové ComfyUI za CF Access — pro
+(`<spark>:8188`) a WD14 (`:8097`) přímo po LAN. `comfyui.ol1n.com` je syrové ComfyUI za CF Access — pro
 aplikaci nevhodné (viz §1).
 
 ---
