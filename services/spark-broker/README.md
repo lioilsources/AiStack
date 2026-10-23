@@ -67,7 +67,9 @@ udělat, ❓ dotaz na prioritu nad strop, 🪟 okno jménem uživatele, 💤 ne�
  ]}
 ```
 
-Klient pro sessions: `sparkctl` (bash, jen curl + python3), návod `sparkctl help`.
+Klient pro sessions: `sparkctl` (Go, `cmd/sparkctl`, sdílí typy s brokerem), návod `sparkctl help`.
+Id úlohy jde na stdout, průběh na stderr; chyba API = exit 1 (skript tak pozná třeba osiřelý lease),
+špatné argumenty = exit 2. Přehled fronty pro lidi: `sparkctl ls [projekt]`.
 
 ```bash
 sparkctl window comfyui 3h "chci comfy na 3 hodiny"     # okno jménem uživatele
@@ -79,7 +81,8 @@ sparkctl done $id '{"sounds":{"ok":15,"failed":0}}'
 ## Nasazení (SPARK, user systemd)
 
 ```bash
-make -C services/spark-broker build            # linux/arm64 binárka do bin/
+make -C services/spark-broker build            # bin/spark-broker + bin/sparkctl-{linux,darwin}-arm64
+cp bin/sparkctl-darwin-arm64 ~/.local/bin/sparkctl; scp bin/sparkctl-linux-arm64 spark:spark-broker/sparkctl  # SPARK: symlink v ~/.local/bin
 scp bin/spark-broker spark:spark-broker/        # + deploy/config.example.yaml → ~/spark-broker/config.yaml
 scp deploy/profiles/gptoss-up.sh spark:spark-broker/profiles/
 scp deploy/spark-broker.service spark:.config/systemd/user/
