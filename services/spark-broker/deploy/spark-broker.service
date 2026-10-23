@@ -1,0 +1,17 @@
+# ~/.config/systemd/user/spark-broker.service
+[Unit]
+Description=spark-broker — fronta úloh SPARKu (okno na vyžádání, jinak priorita)
+After=network-online.target docker.service
+OnFailure=notify-failure@%n.service
+
+[Service]
+Type=simple
+EnvironmentFile=-%h/spark-broker/broker.env
+ExecStart=%h/spark-broker/spark-broker
+Restart=always
+RestartSec=10
+# provisioning skripty potřebují docker, systemctl --user a PATH s nvidia-smi
+Environment=PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+
+[Install]
+WantedBy=default.target

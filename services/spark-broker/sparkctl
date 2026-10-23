@@ -1,0 +1,101 @@
+#!/usr/bin/env bash
+# sparkctl — klient spark-brokera pro Claude sessions (a lidi).
+#
+#   sparkctl status                                   co běží, fronta, paměť, teplota
+#   sparkctl catalog                                  profily, služby, stropy priorit
+#   sparkctl window <služby> <délka> "<slova uživatele>"   okno jménem uživatele (priorita 100)
+#        např. sparkctl window comfyui 3h "chci comfy na 3 hodiny"
+#   sparkctl lease <projekt> <služby> <min> [priorita] [název]   rezervace pro session; vypíše id, čeká na running
+#   sparkctl run <projekt> <služby> <priorita> "<příkaz na SPARKu>" [název]   úlohu spustí broker (resumovatelná)
+#   sparkctl wait <id>                                čeká na running (nejvýš 1 dotaz za 30 s)
+#   sparkctl hb <id> [metriky-json]                   heartbeat lease (aspoň každých 5 min)
+#   sparkctl done <id> [metriky-json]                 konec lease, např. '{"images":{"ok":44,"failed":2}}'
+#   sparkctl fail <id> "<chyba>"                      lease skončil chybou (okamžitě na Telegram)
+#   sparkctl extend <id> [min]                        prodloužit lease
+#   sparkctl prio <id> <priorita>                     změna priority (nad strop projektu = dotaz na uživatele)
+#   sparkctl approve <id>                             schválit prioritu nad strop — JEN na výslovný pokyn uživatele
+#   sparkctl cancel <id>
+#   sparkctl jobs [projekt]                           moje úlohy (i hotové)
+#   sparkctl pause | resume
+#
+# Služby víc najednou oddělit čárkou: comfyui,audio-music. Adresa: $SPARK_BROKER
+# (default http://spark-99bb:8100), token $SPARK_BROKER_TOKEN (nepovinný).
+set -euo pipefail
+B="${SPARK_BROKER:-http://spark-99bb:8100}"
+SESSION="${SPARK_SESSION:-${CLAUDE_SESSION_NAME:-$(basename "$PWD")}}"
+
+api() { # metoda cesta [json]
+  local auth=()
+  [ -n "${SPARK_BROKER_TOKEN:-}" ] && auth=(-H "Authorization: Bearer $SPARK_BROKER_TOKEN")
+  if [ $# -ge 3 ]; then
+    curl -sS -m 30 -X "$1" ${auth[@]+"${auth[@]}"} -H 'Content-Type: application/json' --data-binary "$3" "$B$2"
+  else
+    curl -sS -m 30 -X "$1" ${auth[@]+"${auth[@]}"} "$B$2"
+  fi
+}
+
+js() { python3 -c "import json,sys; print(json.dumps(sys.argv[1]))" "$1"; }
+svcs() { python3 -c "import json,sys; print(json.dumps([s for s in sys.argv[1].split(',') if s]))" "$1"; }
+field() { python3 -c "
+import json,sys
+try: d=json.load(sys.stdin)
+except ValueError: d={}
+print((d.get(sys.argv[1]) if isinstance(d, dict) else '') or '')" "$1"; }
+minutes() { # 3h / 90m / 90
+  case "$1" in *h) echo $(( ${1%h} * 60 ));; *m) echo "${1%m}";; *) echo "$1";; esac
+}
+
+submit() { # json → id (nebo chyba)
+  local out id
+  out="$(api POST /v1/jobs "$1")"
+  id="$(printf '%s' "$out" | field id)"
+  if [ -z "$id" ]; then echo "$out" >&2; exit 1; fi
+  printf '%s\n' "$out" | python3 -c "import json,sys; d=json.load(sys.stdin); print(f\"úloha {d['id']}: {d['state']}, priorita {d['priority']}\" + (f\" (chce {d['pending_priority']}, čeká na uživatele)\" if d.get('pending_priority') else ''))" >&2
+  echo "$id"
+}
+
+wait_running() {
+  local id="$1" last=""
+  while :; do
+    local out st w
+    out="$(api GET "/v1/jobs/$id")"
+    st="$(printf '%s' "$out" | field state)"
+    w="$(printf '%s' "$out" | field waiting)"
+    case "$st" in
+      running) echo "running: $id" >&2; return 0 ;;
+      done|failed|cancelled|orphaned) echo "úloha skončila: $st" >&2; printf '%s\n' "$out" >&2; return 1 ;;
+    esac
+    [ "$w" != "$last" ] && { echo "čeká: $w" >&2; last="$w"; }
+    sleep 30
+  done
+}
+
+cmd="${1:-status}"; shift || true
+case "$cmd" in
+  status)  api GET /v1/status ;;
+  catalog) api GET /v1/catalog ;;
+  jobs)    api GET "/v1/jobs?all=1${1:+&project=$1}" ;;
+  window)
+    [ $# -ge 3 ] || { echo 'sparkctl window <služby> <délka> "<doslovná slova uživatele>"' >&2; exit 2; }
+    id="$(submit "{\"project\":\"user\",\"session\":$(js "$SESSION"),\"title\":$(js "okno $1"),\"on_behalf_of_user\":true,\"user_quote\":$(js "$3"),\"stages\":[{\"services\":$(svcs "$1"),\"mode\":\"lease\",\"lease_min\":$(minutes "$2")}]}")"
+    echo "$id"; wait_running "$id" ;;
+  lease)
+    [ $# -ge 3 ] || { echo 'sparkctl lease <projekt> <služby> <min> [priorita] [název]' >&2; exit 2; }
+    id="$(submit "{\"project\":$(js "$1"),\"session\":$(js "$SESSION"),\"title\":$(js "${5:-$2}"),\"priority\":${4:-20},\"stages\":[{\"services\":$(svcs "$2"),\"mode\":\"lease\",\"lease_min\":$(minutes "$3"),\"estimate_min\":$(minutes "$3")}]}")"
+    echo "$id"; wait_running "$id" ;;
+  run)
+    [ $# -ge 4 ] || { echo 'sparkctl run <projekt> <služby> <priorita> "<příkaz>" [název]' >&2; exit 2; }
+    id="$(submit "{\"project\":$(js "$1"),\"session\":$(js "$SESSION"),\"title\":$(js "${5:-$4}"),\"priority\":$3,\"resume\":true,\"stages\":[{\"services\":$(svcs "$2"),\"mode\":\"run\",\"command\":$(js "$4")}]}")"
+    echo "$id" ;;
+  wait)    wait_running "$1" ;;
+  hb)      api POST "/v1/jobs/$1/heartbeat" "{\"metrics\":${2:-{\}}}" >/dev/null ;;
+  done)    api POST "/v1/jobs/$1/done" "{\"metrics\":${2:-{\}}}" ;;
+  fail)    api POST "/v1/jobs/$1/done" "{\"error\":$(js "$2")}" ;;
+  extend)  api POST "/v1/jobs/$1/extend?minutes=${2:-30}" ;;
+  prio)    api PATCH "/v1/jobs/$1" "{\"priority\":$2}" ;;
+  approve) api POST "/v1/jobs/$1/approve" ;;
+  cancel)  api DELETE "/v1/jobs/$1" ;;
+  pause)   api POST /v1/pause ;;
+  resume)  api POST /v1/resume ;;
+  *) sed -n '2,25p' "$0"; exit 2 ;;
+esac
