@@ -10,9 +10,9 @@ import (
 
 // Stavy úlohy.
 const (
-	Queued    = "queued"    // čeká na prostředí
-	Running   = "running"   // prostředí je připravené; lease: session volá služby, run: příkaz běží
-	Draining  = "draining"  // dostala pokyn uvolnit SPARK (preempce), do DrainAt musí skončit
+	Queued    = "queued"   // čeká na prostředí
+	Running   = "running"  // prostředí je připravené; lease: session volá služby, run: příkaz běží
+	Draining  = "draining" // dostala pokyn uvolnit SPARK (preempce), do DrainAt musí skončit
 	Done      = "done"
 	Failed    = "failed"
 	Cancelled = "cancelled"
@@ -60,16 +60,17 @@ type Job struct {
 	// Priorita nad strop projektu, která čeká na souhlas uživatele; do té doby platí Priority.
 	PendingPriority int `json:"pending_priority,omitempty"`
 
-	Deadline    *time.Time `json:"deadline,omitempty"`
-	Preemptible bool       `json:"preemptible"`
-	Resume      bool       `json:"resume"` // run: po SIGTERM jde bezpečně pustit znovu
-	Heartbeat   bool       `json:"heartbeat"`
-	IdleCloseMin int       `json:"idle_close_min,omitempty"` // lease: zavřít po N min bez aktivity v ComfyUI
-	Recurring   string     `json:"recurring,omitempty"`
-	Notify      bool       `json:"notify"` // souhrn po skončení (chyby se hlásí vždy)
+	Deadline     *time.Time `json:"deadline,omitempty"`
+	Preemptible  bool       `json:"preemptible"`
+	Resume       bool       `json:"resume"` // run: po SIGTERM jde bezpečně pustit znovu
+	Heartbeat    bool       `json:"heartbeat"`
+	IdleCloseMin int        `json:"idle_close_min,omitempty"` // lease: zavřít po N min bez aktivity v ComfyUI
+	Recurring    string     `json:"recurring,omitempty"`
+	Notify       bool       `json:"notify"` // souhrn po skončení (chyby se hlásí vždy)
 
-	Stages   []Stage `json:"stages"`
-	StageIdx int     `json:"stage_idx"`
+	After    []string `json:"after,omitempty"` // startuje až po skončení těchto úloh
+	Stages   []Stage  `json:"stages"`
+	StageIdx int      `json:"stage_idx"`
 
 	State         string           `json:"state"`
 	Created       time.Time        `json:"created"`
@@ -128,15 +129,15 @@ func (j *Job) addMetrics(m map[string]Count) {
 // State se ukládá jako JSON (atomický zápis). Úloh je desítky, ne miliony;
 // SQLite by chtělo cgo nebo velkou závislost a nic by nepřineslo.
 type persisted struct {
-	Profile      string          `json:"profile"`
-	ProfileSince time.Time       `json:"profile_since"`
-	Addons       map[string]bool `json:"addons"`
-	Paused       bool            `json:"paused"`
-	Seq          int             `json:"seq"`
-	Jobs         []*Job          `json:"jobs"`
+	Profile      string            `json:"profile"`
+	ProfileSince time.Time         `json:"profile_since"`
+	Addons       map[string]bool   `json:"addons"`
+	Paused       bool              `json:"paused"`
+	Seq          int               `json:"seq"`
+	Jobs         []*Job            `json:"jobs"`
 	RecurringDay map[string]string `json:"recurring_day"` // jméno → den, kdy už rezervace vznikla
-	Digest       []string        `json:"digest"`          // souhrny backlogu do denního hlášení
-	DigestDay    string          `json:"digest_day"`
+	Digest       []string          `json:"digest"`        // souhrny backlogu do denního hlášení
+	DigestDay    string            `json:"digest_day"`
 }
 
 func save(path string, p *persisted) error {

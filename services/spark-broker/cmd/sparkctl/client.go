@@ -120,13 +120,13 @@ func (c *client) submit(r broker.SubmitReq) (*broker.Job, error) {
 	return &j, nil
 }
 
-func (c *client) submitAndWait(r broker.SubmitReq) error {
+func (c *client) submitAndWait(o opts, r broker.SubmitReq) error {
 	j, err := c.submit(r)
 	if err != nil {
 		return err
 	}
 	fmt.Println(j.ID)
-	return c.wait(j.ID)
+	return c.waitAndMark(j.ID, o.idFile)
 }
 
 // wait čeká, až úloha poběží; hlásí změny důvodu čekání. Konečný stav = chyba.

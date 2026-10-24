@@ -44,12 +44,12 @@ func (p *fakeProc) Terminate() {
 func (p *fakeProc) Kill() {}
 
 type fakeEx struct {
-	mu     sync.Mutex
-	cmds   []string
-	fail   map[string]bool
-	ok     map[string]bool // detect: které příkazy uspějí
-	procs  []*fakeProc
-	probe  Probe
+	mu    sync.Mutex
+	cmds  []string
+	fail  map[string]bool
+	ok    map[string]bool // detect: které příkazy uspějí
+	procs []*fakeProc
+	probe Probe
 }
 
 func (f *fakeEx) Shell(_ context.Context, cmd string) (string, error) {
@@ -131,8 +131,8 @@ func newEnv(t *testing.T, control bool, profile string) *env {
 	return e
 }
 
-func (e *env) tick()                    { e.b.Tick() }
-func (e *env) adv(d time.Duration)      { e.now = e.now.Add(d); e.b.Tick() }
+func (e *env) tick()               { e.b.Tick() }
+func (e *env) adv(d time.Duration) { e.now = e.now.Add(d); e.b.Tick() }
 func (e *env) submit(r SubmitReq) *Job {
 	e.t.Helper()
 	j, err := e.b.Submit(r)
@@ -214,6 +214,34 @@ func TestPreemptLeaseAndResume(t *testing.T) {
 	e.want(low.ID, Running)
 	if !e.nt.has("chunks 120 (2 chyb)") {
 		t.Fatalf("souhrn chybí: %v", e.nt.msg)
+	}
+}
+
+// Webtoon 24. 10.: překlad → ComfyUI. Navazující úloha je ve frontě hned, ale čeká na předchozí;
+// nižší úloha bez závislosti mezitím jet smí.
+func TestAfterWaitsForDependency(t *testing.T) {
+	e := newEnv(t, true, "llm")
+	first := e.submit(lease("webtoon", 30, "qwen36"))
+	e.tick()
+	e.want(first.ID, Running)
+	next := e.submit(SubmitReq{Project: "webtoon", Priority: 30, After: []string{first.ID},
+		Stages: []Stage{{Services: []string{"comfyui"}, Mode: ModeLease, LeaseMin: 60}}})
+	e.tick()
+	e.want(next.ID, Queued)
+	if got := e.state(next.ID).Waiting; !strings.HasPrefix(got, "po "+first.ID) {
+		t.Fatalf("waiting = %q", got)
+	}
+	if e.b.Status().Profile != "llm" {
+		t.Fatal("závislá úloha nesmí přepnout profil")
+	}
+	if _, err := e.b.Done(first.ID, DoneReq{}); err != nil {
+		t.Fatal(err)
+	}
+	e.tick()
+	e.tick()
+	e.want(next.ID, Running)
+	if _, err := e.b.Submit(SubmitReq{Project: "x", After: []string{"nope"}, Stages: []Stage{{Services: []string{"comfyui"}}}}); err == nil {
+		t.Fatal("after na neexistující úlohu nesmí projít")
 	}
 }
 

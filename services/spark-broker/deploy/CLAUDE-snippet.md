@@ -6,6 +6,8 @@ na SPARKu GPU službu (LLM přes LiteLLM, ComfyUI, flux, audio, TTS, …):
 1. `sparkctl status` — co běží a co čeká; `sparkctl catalog` — služby a profily.
 2. Zařaď úlohu: `id=$(sparkctl lease <projekt> <služby> <minuty> [priorita] "<název>")`
    (čeká, až bude prostředí `running`), nebo `sparkctl run …` pro dávku, kterou spustí broker.
+   Dávka na tomhle stroji: `sparkctl exec <projekt> <služby> <min> [priorita] "<název>" -- <příkaz>`
+   (heartbeat, odsunutí i done/fail obstará sám). Navázat na jinou úlohu: `--after <id>`.
 3. Během práce `sparkctl hb $id` aspoň každých 5 min; na konci
    `sparkctl done $id '{"images":{"ok":N,"failed":M}}'` (metriky jdou do souhrnu na Telegram),
    při chybě `sparkctl fail $id "<co se stalo>"`.

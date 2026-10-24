@@ -156,7 +156,9 @@ type SubmitReq struct {
 	OnBehalfOfUser bool       `json:"on_behalf_of_user"`
 	UserQuote      string     `json:"user_quote"`
 	Notify         *bool      `json:"notify"`
-	Stages         []Stage    `json:"stages"`
+	// Úloha se zařadí hned (vidět v ls), ale nestartuje, dokud tyhle úlohy neskončí (jakkoli).
+	After  []string `json:"after"`
+	Stages []Stage  `json:"stages"`
 }
 
 func (b *Broker) Submit(r SubmitReq) (*Job, error) {
@@ -202,7 +204,13 @@ func (b *Broker) Submit(r SubmitReq) (*Job, error) {
 			return nil, bad("stage %s: mode je run nebo lease", s.Name)
 		}
 	}
+	for _, id := range r.After {
+		if b.find(id) == nil {
+			return nil, bad("after: úloha %s neexistuje", id)
+		}
+	}
 	j := &Job{
+		After:   r.After,
 		Project: r.Project, Session: r.Session, Title: r.Title, Deadline: r.Deadline,
 		Resume: r.Resume, OnBehalfOfUser: r.OnBehalfOfUser, UserQuote: r.UserQuote,
 		Stages: r.Stages, State: Queued, Created: now, Notify: true, RequestedPriority: r.Priority,
@@ -564,6 +572,10 @@ func (b *Broker) schedule(now time.Time) {
 
 	blockedHigher := false // vyšší úloha čeká na přepnutí — dál smí jen to, co jde kdykoli odsunout
 	for _, j := range b.queue() {
+		if dep := b.pendingDep(j); dep != nil {
+			j.Waiting = fmt.Sprintf("po %s (%s: %s)", dep.ID, dep.Project, dep.Title)
+			continue
+		}
 		st := j.Stage()
 		target, _ := b.cat.Target(b.st.Profile, st.Services)
 		if target == b.st.Profile && b.st.Profile != "" {
@@ -637,6 +649,16 @@ func (b *Broker) schedule(now time.Time) {
 		b.switchProfile(target, j, now)
 		return
 	}
+}
+
+// pendingDep vrátí první úlohu z After, která ještě neskončila.
+func (b *Broker) pendingDep(j *Job) *Job {
+	for _, id := range j.After {
+		if d := b.find(id); d != nil && !d.Final() {
+			return d
+		}
+	}
+	return nil
 }
 
 func (b *Broker) addonsBusy(addons []string) string {
