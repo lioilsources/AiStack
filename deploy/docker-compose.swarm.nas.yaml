@@ -8,9 +8,9 @@
 #   CHROMA_TOKEN=<tajný token>     # pokud chceš auth (volitelné)
 #
 # Ze SPARKu se připojuj na:
-#   http://192.168.88.88:8006
+#   http://<nas>:8006
 # Na SPARKu v .env:
-#   CHROMADB_URL=http://192.168.88.88:8006
+#   CHROMADB_URL=http://<nas>:8006
 
 services:
   chromadb:

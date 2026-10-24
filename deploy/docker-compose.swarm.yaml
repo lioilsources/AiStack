@@ -271,7 +271,7 @@ services:
       start_period: 180s
 
   # ── Vector store: ChromaDB — běží na NASu (deploy/docker-compose.swarm.nas.yaml)
-  # Adresa: ${CHROMADB_URL}  →  http://192.168.88.88:8006
+  # Adresa: ${CHROMADB_URL}  →  http://<nas>:8006
 
   # ── Evaluator: deterministic GLSL compile / static / EGL runtime scoring ────
   # Source: AiSwarmBattle/evaluator (Go + glslang + headless EGL). No LLM.

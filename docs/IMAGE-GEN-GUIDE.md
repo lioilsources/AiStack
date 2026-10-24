@@ -9,7 +9,7 @@ Stav 2026-10-02 (časy doplněné z běhu MemeShorts G0 téhož dne). Pro sessio
 | Backend | Okno | Na co |
 |---|---|---|
 | **flux-schnell NIM** přes gen-queue | comfy 07–13, llm 19–01 | tier 0, txt2img, 4 kroky, rychlý |
-| **ComfyUI** (`http://192.168.88.66:8188`, LAN bez auth) | jen comfy 07–13 (primárně experimenty uživatele) | vše ostatní: img2img, ControlNet, IP-Adapter, inpaint, upscale, výřez, video |
+| **ComfyUI** (`http://<spark>:8188`, LAN bez auth) | jen comfy 07–13 (primárně experimenty uživatele) | vše ostatní: img2img, ControlNet, IP-Adapter, inpaint, upscale, výřez, video |
 | nic obrázkového | director 13–19 a 01–07 | director (91 GiB) se s ničím jiným nevejde |
 
 ## 2. Modely v ComfyUI
@@ -34,11 +34,11 @@ do assets až vybrané) — sdílený svazek není.
 **flux-schnell NIM** (gen-queue):
 
 ```bash
-curl -s -X POST http://192.168.88.66:8091/nim/flux-schnell/v1/infer \
+curl -s -X POST http://<spark>:8091/nim/flux-schnell/v1/infer \
   -H 'Content-Type: application/json' \
   -d '{"prompt":"…","width":1024,"height":1024,"seed":42,"steps":4}'   # → 202 {"id":"…","queue_position":N}
-curl -s http://192.168.88.66:8091/nim/flux-schnell/jobs/<id>           # poll: queued | running | done | error
-curl -s -o out.jpg http://192.168.88.66:8091/nim/flux-schnell/jobs/<id>/result   # bajty jsou JPEG
+curl -s http://<spark>:8091/nim/flux-schnell/jobs/<id>           # poll: queued | running | done | error
+curl -s -o out.jpg http://<spark>:8091/nim/flux-schnell/jobs/<id>/result   # bajty jsou JPEG
 ```
 
 - Výsledek se drží 1 h, pak zmizí i stav jobu. Fronta je jedna a sdílená: **čekat na `done` minuty, ne

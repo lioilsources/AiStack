@@ -16,7 +16,7 @@ import (
 // bundle lands in the spool directory and a background loop retries — Spark
 // holds no state beyond that (the NAS is the single source of truth).
 type NAS struct {
-	URL      string // http://192.168.88.88:8095
+	URL      string // http://<nas>:8095
 	SpoolDir string
 	Client   *http.Client
 }
