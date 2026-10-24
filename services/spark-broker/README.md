@@ -76,13 +76,24 @@ sparkctl window comfyui 3h "chci comfy na 3 hodiny"     # okno jménem uživatel
 id=$(sparkctl lease webtoon comfyui,audio-music 30 25 "hudba pod shorts")   # čeká na running
 sparkctl hb $id                                          # aspoň každých 5 min
 sparkctl done $id '{"sounds":{"ok":15,"failed":0}}'
+
+# dávka na Macu bez obalového skriptu: lease, heartbeat, prodlužování, po odsunutí příkaz
+# zastaví a po návratu pustí znovu; done/fail podle exit kódu, metriky z posledního řádku stdout
+sparkctl exec storyteller qwen36 180 20 "zvuky p2" --dir ~/st/rag -- python -m rag.sounds cues
+# navazování: ve frontě hned (vidět v ls jako „po 1024-15“), startuje až po skončení té úlohy
+sparkctl run library director 10 "<příkaz>" "knihovna" --after 1024-15
+# lease pro jinou session: heartbeat drží hold, uvolní ho, až lokální skript doběhne
+sparkctl hold 1024-15 --proc local_strip.sh --id-file ~/ops-director/webtoon/comfy.id
 ```
 
 ## Nasazení (SPARK, user systemd)
 
 ```bash
 make -C services/spark-broker build            # bin/spark-broker + bin/sparkctl-{linux,darwin}-arm64
-cp bin/sparkctl-darwin-arm64 ~/.local/bin/sparkctl; scp bin/sparkctl-linux-arm64 spark:spark-broker/sparkctl  # SPARK: symlink v ~/.local/bin
+# binárky jen atomicky (kopie vedle + mv): bash čte skript za běhu a přepsání na místě
+# 23. 10. shodilo čekající `sparkctl lease` (úloha osiřela)
+cp bin/sparkctl-darwin-arm64 ~/.local/bin/sparkctl.new && mv ~/.local/bin/sparkctl.new ~/.local/bin/sparkctl
+scp bin/sparkctl-linux-arm64 spark:spark-broker/sparkctl.new && ssh spark mv spark-broker/sparkctl.new spark-broker/sparkctl  # SPARK: symlink v ~/.local/bin
 scp bin/spark-broker spark:spark-broker/        # + deploy/config.example.yaml → ~/spark-broker/config.yaml
 scp deploy/profiles/gptoss-up.sh spark:spark-broker/profiles/
 scp deploy/spark-broker.service spark:.config/systemd/user/

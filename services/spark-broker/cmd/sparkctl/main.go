@@ -32,6 +32,11 @@ Okno uživatele (priorita 100, jen s doslovnými slovy uživatele)
 Úlohy
   sparkctl lease <projekt> <služby> <min> [priorita] [název]   rezervace; vypíše id, čeká na running
   sparkctl run <projekt> <služby> <priorita> "<příkaz na SPARKu>" [název]   dávku spustí broker
+  sparkctl exec <projekt> <služby> <min> [priorita] [název] [--dir D] -- <příkaz> [arg…]
+      lease + příkaz na tomhle stroji: heartbeat, prodlužování, při odsunutí příkaz
+      zastaví a po návratu pustí znovu; konec = done/fail podle exit kódu
+  sparkctl hold <id> [--proc <vzor>]          drží lease heartbeatem (i po odsunutí);
+      s --proc ho uvolní, až lokální proces (pgrep -f) běžel a skončil
   sparkctl wait <id>                          čeká na running
   sparkctl hb <id> [metriky-json]             heartbeat lease (aspoň každých 5 min)
   sparkctl done <id> [metriky-json]           konec, např. '{"images":{"ok":44,"failed":2}}'
@@ -42,6 +47,8 @@ Okno uživatele (priorita 100, jen s doslovnými slovy uživatele)
   sparkctl cancel <id>
   sparkctl pause | resume                     nic nového nestartovat · zase jet
 
+Navazování: lease/run/exec/window --after <id>[,<id>] — úloha je ve frontě hned (vidět
+v ls), ale startuje až po skončení těch úloh. --id-file <soubor>: zapsat id, až úloha běží.
 Služby víc najednou oddělit čárkou: comfyui,audio-music. Délka: 3h, 90m nebo minuty.
 Prostředí: SPARK_BROKER (výchozí http://spark-99bb:8100), SPARK_BROKER_TOKEN, SPARK_SESSION.
 `
@@ -67,6 +74,10 @@ func run(args []string) error {
 	cmd := "status"
 	if len(args) > 0 {
 		cmd, args = args[0], args[1:]
+	}
+	args, o, err := parseOpts(args)
+	if err != nil {
+		return err
 	}
 	arg := func(i int, def string) string {
 		if i < len(args) {
@@ -113,13 +124,13 @@ func run(args []string) error {
 		if err != nil {
 			return err
 		}
-		return c.submitAndWait(broker.SubmitReq{
-			Project: "user", Session: session(), Title: "okno " + args[0],
+		return c.submitAndWait(o, broker.SubmitReq{
+			Project: "user", Session: session(), Title: "okno " + args[0], After: o.after,
 			OnBehalfOfUser: true, UserQuote: args[2],
 			Stages: []broker.Stage{{Services: services(args[0]), Mode: broker.ModeLease, LeaseMin: min}},
 		})
-	case "lease":
-		if err := need(3, "lease <projekt> <služby> <min> [priorita] [název]"); err != nil {
+	case "lease", "exec":
+		if err := need(3, cmd+" <projekt> <služby> <min> [priorita] [název]"); err != nil {
 			return err
 		}
 		min, err := minutes(args[2])
@@ -130,10 +141,14 @@ func run(args []string) error {
 		if err != nil {
 			return fmt.Errorf("priorita %q není číslo", arg(3, ""))
 		}
-		return c.submitAndWait(broker.SubmitReq{
-			Project: args[0], Session: session(), Title: arg(4, args[1]), Priority: prio,
+		r := broker.SubmitReq{
+			Project: args[0], Session: session(), Title: arg(4, args[1]), Priority: prio, After: o.after,
 			Stages: []broker.Stage{{Services: services(args[1]), Mode: broker.ModeLease, LeaseMin: min, EstimateMin: min}},
-		})
+		}
+		if cmd == "exec" {
+			return c.execJob(r, o)
+		}
+		return c.submitAndWait(o, r)
 	case "run":
 		if err := need(4, `run <projekt> <služby> <priorita> "<příkaz>" [název]`); err != nil {
 			return err
@@ -143,7 +158,7 @@ func run(args []string) error {
 			return fmt.Errorf("priorita %q není číslo", args[2])
 		}
 		j, err := c.submit(broker.SubmitReq{
-			Project: args[0], Session: session(), Title: arg(4, args[3]), Priority: prio, Resume: true,
+			Project: args[0], Session: session(), Title: arg(4, args[3]), Priority: prio, Resume: true, After: o.after,
 			Stages: []broker.Stage{{Services: services(args[1]), Mode: broker.ModeRun, Command: args[3]}},
 		})
 		if err != nil {
@@ -155,7 +170,12 @@ func run(args []string) error {
 		if err := need(1, "wait <id>"); err != nil {
 			return err
 		}
-		return c.wait(args[0])
+		return c.waitAndMark(args[0], o.idFile)
+	case "hold":
+		if err := need(1, "hold <id> [--proc <vzor>] [--id-file <soubor>]"); err != nil {
+			return err
+		}
+		return c.hold(args[0], o)
 
 	case "hb":
 		if err := need(1, "hb <id> [metriky-json]"); err != nil {
