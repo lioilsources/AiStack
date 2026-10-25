@@ -31,6 +31,7 @@ type Options struct {
 	DrainGrace       time.Duration
 	IdleCloseGrace   time.Duration // po varování o nečinnosti
 	DetectEvery      time.Duration
+	NoProfileWatch   bool // control: nehlídat, jestli profil pořád běží (testy, které detect neřeší)
 }
 
 type Broker struct {
@@ -44,6 +45,8 @@ type Broker struct {
 
 	busy       string // probíhající provisioning (popis), "" = nic
 	lastDetect time.Time
+	lastWatch  time.Time
+	watchMiss  int // kolikrát po sobě detect aktuálního profilu selhal
 	probe      Probe
 	lastComfy  int64
 	hotSince   *time.Time
@@ -499,6 +502,7 @@ func (b *Broker) Tick() {
 	b.recurring(now)
 	b.digest(now)
 	b.detect(now)
+	b.watchProfile(now)
 	b.watchLeases(now)
 	defer b.saveLocked()
 	if b.busy != "" {
@@ -858,6 +862,56 @@ func (b *Broker) cancel(j *Job, now time.Time, why string) {
 	if p := b.procs[j.ID]; p != nil {
 		p.Terminate()
 	}
+}
+
+// watchProfile v control režimu hlídá, že profil pořád běží. 25. 10. v 02:07 OOM guard
+// zabil swarm-director, broker dál hlásil profil director a knihovní run úloha hodinu
+// jen čekala na mrtvé LLM. Dvě selhání detect po sobě = profil spadl: úlohy na něm jdou
+// zpět do fronty a plánovač ho nahodí znovu (selže-li to, broker se pozastaví jako vždy).
+func (b *Broker) watchProfile(now time.Time) {
+	if !b.opt.Control || b.opt.NoProfileWatch || b.busy != "" || b.st.Profile == "" ||
+		now.Sub(b.lastWatch) < b.opt.DetectEvery {
+		return
+	}
+	lost := b.st.Profile
+	p, ok := b.cat.Profiles[lost]
+	if !ok || p.Detect == "" {
+		return
+	}
+	b.lastWatch = now
+	b.mu.Unlock()
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	_, err := b.ex.Shell(ctx, p.Detect)
+	cancel()
+	b.mu.Lock()
+	if b.busy != "" || b.st.Profile != lost {
+		return // mezitím se přepínalo
+	}
+	if err == nil {
+		b.watchMiss = 0
+		return
+	}
+	if b.watchMiss++; b.watchMiss < 2 {
+		return
+	}
+	b.watchMiss = 0
+	b.st.Profile, b.st.ProfileSince = "", now
+	b.st.Addons = map[string]bool{}
+	var ids []string
+	for _, j := range b.st.Jobs {
+		if !j.Active() {
+			continue
+		}
+		ids = append(ids, j.ID)
+		if j.Stage().Mode == ModeLease {
+			j.State, j.DrainAt = Queued, nil
+			j.event(now, "profil %s spadl mimo broker, čeká znovu", lost)
+			continue
+		}
+		b.drain(j, now, fmt.Sprintf("profil %s spadl mimo broker", lost))
+	}
+	b.alert("❌ profil <b>%s</b> spadl mimo broker (OOM guard? ruční stop?). Úlohy %s jdou zpět do fronty, nahazuji ho znovu.",
+		esc(lost), esc(orDash(strings.Join(ids, ", "))))
 }
 
 // ---------------------------------------------------------------- provisioning

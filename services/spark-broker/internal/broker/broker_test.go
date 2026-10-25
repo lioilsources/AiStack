@@ -122,7 +122,7 @@ func newEnv(t *testing.T, control bool, profile string) *env {
 	cat.LogDir = t.TempDir()
 	e := &env{t: t, ex: &fakeEx{fail: map[string]bool{}, ok: map[string]bool{}, probe: Probe{MemAvailGiB: 80, GPUTempC: 60, ComfyActive: -1}},
 		nt: &fakeNotify{}, now: time.Date(2026, 10, 23, 9, 0, 0, 0, time.Local)}
-	e.b, err = New(cat, e.ex, e.nt, Options{Control: control, Now: func() time.Time { return e.now }})
+	e.b, err = New(cat, e.ex, e.nt, Options{Control: control, NoProfileWatch: true, Now: func() time.Time { return e.now }})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -495,5 +495,41 @@ func TestAdviseRequeuesWhenScheduleSwitches(t *testing.T) {
 	e.want(j.ID, Queued)
 	if w := e.state(j.ID).Waiting; !strings.Contains(w, "comfy") {
 		t.Fatalf("waiting = %q", w)
+	}
+}
+
+// 25. 10. OOM guard zabil swarm-director; broker dál věřil profilu director a run úloha
+// visela na mrtvém LLM. Po dvou selháních detect jde úloha zpět do fronty a profil nahoru.
+func TestLostProfileIsReprovisioned(t *testing.T) {
+	e := newEnv(t, true, "director")
+	e.b.opt.NoProfileWatch = false
+	e.ex.ok["is director"] = true
+	j := e.submit(SubmitReq{Project: "library", Title: "knihovna", Priority: 10, Resume: true,
+		Stages: []Stage{{Services: []string{"director"}, Mode: ModeRun, Command: "enrich"}}})
+	e.tick()
+	e.want(j.ID, Running)
+	e.adv(2 * time.Minute)
+	e.want(j.ID, Running)
+
+	e.ex.mu.Lock()
+	e.ex.ok["is director"] = false
+	e.ex.mu.Unlock()
+	e.adv(2 * time.Minute) // první selhání: může to být zakopnutí
+	e.want(j.ID, Running)
+	e.adv(2 * time.Minute)
+	e.want(j.ID, Draining)
+	if !e.ex.procs[0].termed || !e.nt.has("spadl mimo broker") {
+		t.Fatal("úloha měla dostat SIGTERM a uživatel zprávu")
+	}
+	e.ex.procs[0].ch <- 143
+	waitFor(t, func() bool { return e.state(j.ID).State == Queued })
+	e.tick() // detect nic nenajde → nahození director
+	e.ex.mu.Lock()
+	e.ex.ok["is director"] = true
+	e.ex.mu.Unlock()
+	e.tick() // start
+	e.want(j.ID, Running)
+	if e.ex.ran("up director") != 1 || e.ex.ran("run enrich") != 2 {
+		t.Fatalf("příkazy %v", e.ex.cmds)
 	}
 }
