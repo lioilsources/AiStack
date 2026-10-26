@@ -60,7 +60,10 @@ type Job struct {
 	// Priorita nad strop projektu, která čeká na souhlas uživatele; do té doby platí Priority.
 	PendingPriority int `json:"pending_priority,omitempty"`
 
-	Deadline     *time.Time `json:"deadline,omitempty"`
+	Deadline *time.Time `json:"deadline,omitempty"`
+	// Jednorázová akce na čas: do té doby jen čeká ve frontě (vidět v ls). Když čas
+	// nastane, předbíhá dlouhé úlohy, které se dají přerušit a navázat (viz preemptsLong).
+	NotBefore    *time.Time `json:"not_before,omitempty"`
 	Preemptible  bool       `json:"preemptible"`
 	Resume       bool       `json:"resume"` // run: po SIGTERM jde bezpečně pustit znovu
 	Heartbeat    bool       `json:"heartbeat"`
@@ -180,4 +183,9 @@ func load(path string) (*persisted, error) {
 		p.RecurringDay = map[string]string{}
 	}
 	return p, nil
+}
+
+// due: jednorázová akce na čas, jejíž čas už nastal.
+func (j *Job) due(now time.Time) bool {
+	return j.NotBefore != nil && !now.Before(*j.NotBefore)
 }

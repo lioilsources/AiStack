@@ -6,6 +6,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/ol1n/AiStack/spark-broker/internal/broker"
 )
@@ -94,5 +95,24 @@ func TestExecRunsCommandAndReportsMetrics(t *testing.T) {
 	f.state = broker.Running
 	if err := c.execJob(r, opts{cmd: []string{"sh", "-c", "exit 3"}}); err == nil || f.state != broker.Failed {
 		t.Fatalf("nenulový exit musí být fail: %v %s", err, f.state)
+	}
+}
+
+func TestParseAt(t *testing.T) {
+	now := time.Date(2026, 10, 26, 13, 0, 0, 0, time.Local)
+	for in, want := range map[string]string{
+		"19:05":            "2026-10-26 19:05",
+		"06:30":            "2026-10-27 06:30", // už minulo → zítra
+		"2026-10-28 08:00": "2026-10-28 08:00",
+		"+90m":             "2026-10-26 14:30",
+		"+2h":              "2026-10-26 15:00",
+	} {
+		got, err := parseAt(in, now)
+		if err != nil || got.Format("2006-01-02 15:04") != want {
+			t.Errorf("%s → %v %v, čekal jsem %s", in, got, err, want)
+		}
+	}
+	if _, err := parseAt("večer", now); err == nil {
+		t.Error("nesmysl musí selhat")
 	}
 }

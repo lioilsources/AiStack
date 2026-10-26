@@ -82,6 +82,8 @@ sparkctl done $id '{"sounds":{"ok":15,"failed":0}}'
 sparkctl exec storyteller qwen36 180 20 "zvuky p2" --dir ~/st/rag -- python -m rag.sounds cues
 # navazování: ve frontě hned (vidět v ls jako „po 1024-15“), startuje až po skončení té úlohy
 sparkctl run library director 10 "<příkaz>" "knihovna" --after 1024-15
+# jednorázová akce na čas: ve frontě hned (v ls „naplánovaná na 19:05“), startuje v 19:05
+sparkctl exec storyteller gptoss 600 20 "korektura" --at 19:05 -- ./gptoss-fix.sh
 # lease pro jinou session: heartbeat drží hold, uvolní ho, až lokální skript doběhne
 sparkctl hold 1024-15 --proc local_strip.sh --id-file ~/ops-director/webtoon/comfy.id
 ```
@@ -113,6 +115,21 @@ zůstává — broker ho volá jako provisioner profilů.
 - `detect` příkazy musí být navzájem výlučné (pořadí `profile_order`); jinak
   advise hlásí špatný profil.
 - Doplněk se startuje jen s rezervou `mem_gib + mem_reserve_gib` v MemAvailable.
-- `recurring` je jen přechod pro PromoClown, dokud jeho heartbeat neumí `POST /v1/jobs`.
+- `recurring` je jen přechod pro PromoClown, dokud jeho heartbeat neumí `POST /v1/jobs`
+  (od 26. 10. 2026 prázdné). Denně se opakující pevné okno z configu, priorita z configu,
+  neodsouvá se; config se čte jen při startu, změna chce restart brokera.
+
+## Akce na čas (`not_before`, `sparkctl --at`)
+
+Jednorázová akce má přednost před dlouhými úlohami, které se jen na chvíli přeruší:
+
+- Do `not_before` úloha jen čeká ve frontě („naplánovaná na 19:05“) a nic nepřepíná.
+- Když čas nastane, jde ve frontě před všechno bez času a odsune každou **dlouhou** úlohu
+  bez ohledu na prioritu. Dlouhá = `preemptible` a `resume`: `run` s resume a `exec`
+  (sparkctl příkaz po odsunutí zastaví a po návratu pustí znovu). Po akci se vrátí sama.
+- Lease bez resume (tribute, okno uživatele, ruční `lease`) by odsunutí zabilo, ne
+  přerušilo — ty chrání dál priorita, resp. okno uživatele se neodsouvá vůbec.
+- Běžící akci na čas dlouhá úloha zpátky neodsune, jinak by se přetahovaly.
+- `--at`: `19:05` (dnes, už-li minulo, tak zítra), `"2026-10-27 06:30"`, RFC3339, `+90m`.
 - Telegram příkazy (`/spark …`) nejsou: bot čte OpenClaw a `getUpdates` smí mít
   jen jednoho čtenáře. Uživatel řídí broker přes Clauda (`sparkctl`).

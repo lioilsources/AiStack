@@ -533,3 +533,74 @@ func TestLostProfileIsReprovisioned(t *testing.T) {
 		t.Fatalf("příkazy %v", e.ex.cmds)
 	}
 }
+
+// Jednorázová akce na čas: do té doby čeká a nic nepřepíná; pak předběhne dlouhou
+// úlohu, i když má nižší prioritu, a dlouhá se po ní sama vrátí.
+func TestNotBeforePreemptsLongJob(t *testing.T) {
+	e := newEnv(t, true, "director")
+	long := lease("library", 10, "director")
+	long.Resume = true
+	long.Stages[0].LeaseMin = 600
+	lj := e.submit(long)
+	e.tick()
+	e.want(lj.ID, Running)
+	at := e.now.Add(2 * time.Hour)
+	once := lease("storyteller", 5, "gptoss")
+	once.NotBefore = &at
+	oj := e.submit(once)
+	e.tick()
+	e.want(oj.ID, Queued)
+	e.want(lj.ID, Running)
+	if got := e.state(oj.ID).Waiting; got != "naplánovaná na 11:00" {
+		t.Fatalf("waiting = %q", got)
+	}
+	e.now = e.now.Add(2 * time.Hour)
+	e.b.Heartbeat(lj.ID, nil)
+	e.tick()
+	e.want(lj.ID, Draining)
+	e.adv(6 * time.Minute)
+	e.want(lj.ID, Queued)
+	e.tick()
+	e.want(oj.ID, Running)
+	if e.b.Status().Profile != "gptoss" {
+		t.Fatalf("profil %s", e.b.Status().Profile)
+	}
+	if _, err := e.b.Done(oj.ID, DoneReq{}); err != nil {
+		t.Fatal(err)
+	}
+	e.tick()
+	e.tick()
+	e.want(lj.ID, Running)
+}
+
+// Lease bez resume (tribute, okno uživatele) by odsunutí zabilo — chrání ho dál priorita.
+func TestNotBeforeRespectsNonResumable(t *testing.T) {
+	e := newEnv(t, true, "comfy")
+	tribute := e.submit(lease("promoclown", 90, "comfyui"))
+	e.tick()
+	e.want(tribute.ID, Running)
+	at := e.now.Add(time.Minute)
+	once := lease("storyteller", 20, "gptoss")
+	once.NotBefore = &at
+	oj := e.submit(once)
+	e.adv(2 * time.Minute)
+	e.want(tribute.ID, Running)
+	e.want(oj.ID, Queued)
+	if got := e.state(oj.ID).Waiting; !strings.Contains(got, tribute.ID) {
+		t.Fatalf("waiting = %q", got)
+	}
+}
+
+// Ve frontě jde akce, jejíž čas nastal, před vyšší prioritou bez času.
+func TestDueJobLeadsQueue(t *testing.T) {
+	e := newEnv(t, true, "")
+	high := e.submit(lease("storyteller", 40, "director"))
+	at := e.now.Add(-time.Minute)
+	once := lease("webtoon", 10, "comfyui")
+	once.NotBefore = &at
+	oj := e.submit(once)
+	q := e.b.queue()
+	if q[0].ID != oj.ID || q[1].ID != high.ID {
+		t.Fatalf("pořadí %s, %s", q[0].ID, q[1].ID)
+	}
+}

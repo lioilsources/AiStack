@@ -48,7 +48,10 @@ Okno uživatele (priorita 100, jen s doslovnými slovy uživatele)
   sparkctl pause | resume                     nic nového nestartovat · zase jet
 
 Navazování: lease/run/exec/window --after <id>[,<id>] — úloha je ve frontě hned (vidět
-v ls), ale startuje až po skončení těch úloh. --id-file <soubor>: zapsat id, až úloha běží.
+v ls), ale startuje až po skončení těch úloh.
+Na čas: --at 19:05 (dnes, jinak zítra) | "2026-10-27 06:30" | +90m — do té doby čeká ve
+frontě, pak jako jednorázová akce předběhne dlouhé úlohy (run s resume, exec); ty se
+jen na chvíli přeruší a samy navážou. --id-file <soubor>: zapsat id, až úloha běží.
 Služby víc najednou oddělit čárkou: comfyui,audio-music. Délka: 3h, 90m nebo minuty.
 Prostředí: SPARK_BROKER (výchozí http://spark-99bb:8100), SPARK_BROKER_TOKEN, SPARK_SESSION.
 `
@@ -125,7 +128,7 @@ func run(args []string) error {
 			return err
 		}
 		return c.submitAndWait(o, broker.SubmitReq{
-			Project: "user", Session: session(), Title: "okno " + args[0], After: o.after,
+			Project: "user", Session: session(), Title: "okno " + args[0], After: o.after, NotBefore: o.at,
 			OnBehalfOfUser: true, UserQuote: args[2],
 			Stages: []broker.Stage{{Services: services(args[0]), Mode: broker.ModeLease, LeaseMin: min}},
 		})
@@ -142,7 +145,9 @@ func run(args []string) error {
 			return fmt.Errorf("priorita %q není číslo", arg(3, ""))
 		}
 		r := broker.SubmitReq{
-			Project: args[0], Session: session(), Title: arg(4, args[1]), Priority: prio, After: o.after,
+			Project: args[0], Session: session(), Title: arg(4, args[1]), Priority: prio, After: o.after, NotBefore: o.at,
+			// exec po odsunutí příkaz zastaví a po návratu pustí znovu — umí navázat
+			Resume: cmd == "exec",
 			Stages: []broker.Stage{{Services: services(args[1]), Mode: broker.ModeLease, LeaseMin: min, EstimateMin: min}},
 		}
 		if cmd == "exec" {
@@ -158,7 +163,7 @@ func run(args []string) error {
 			return fmt.Errorf("priorita %q není číslo", args[2])
 		}
 		j, err := c.submit(broker.SubmitReq{
-			Project: args[0], Session: session(), Title: arg(4, args[3]), Priority: prio, Resume: true, After: o.after,
+			Project: args[0], Session: session(), Title: arg(4, args[3]), Priority: prio, Resume: true, After: o.after, NotBefore: o.at,
 			Stages: []broker.Stage{{Services: services(args[1]), Mode: broker.ModeRun, Command: args[3]}},
 		})
 		if err != nil {

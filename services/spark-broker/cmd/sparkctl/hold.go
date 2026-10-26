@@ -21,9 +21,10 @@ import (
 // opts jsou volby --x hodnota, které smí stát kdekoli před `--`.
 type opts struct {
 	after  []string
-	proc   string // hold: uvolnit, až tenhle lokální proces (pgrep -f) běžel a skončil
-	idFile string // zapsat id, jakmile úloha běží (pro jinou session, která na ni čeká)
-	dir    string // exec: pracovní adresář příkazu
+	at     *time.Time // --at: jednorázová akce na čas
+	proc   string     // hold: uvolnit, až tenhle lokální proces (pgrep -f) běžel a skončil
+	idFile string     // zapsat id, jakmile úloha běží (pro jinou session, která na ni čeká)
+	dir    string     // exec: pracovní adresář příkazu
 	cmd    []string
 }
 
@@ -38,7 +39,7 @@ func parseOpts(args []string) ([]string, opts, error) {
 		}
 		var dst *string
 		switch a {
-		case "--after":
+		case "--after", "--at":
 		case "--proc":
 			dst = &o.proc
 		case "--id-file":
@@ -53,13 +54,46 @@ func parseOpts(args []string) ([]string, opts, error) {
 			return nil, o, usageErr(a + " chce hodnotu")
 		}
 		i++
-		if dst != nil {
+		switch {
+		case dst != nil:
 			*dst = args[i]
-		} else {
+		case a == "--at":
+			t, err := parseAt(args[i], time.Now())
+			if err != nil {
+				return nil, o, err
+			}
+			o.at = &t
+		default:
 			o.after = append(o.after, services(args[i])...)
 		}
 	}
 	return rest, o, nil
+}
+
+// parseAt: "19:05" (dnes, už-li minulo, tak zítra), "2026-10-27 06:30", RFC3339,
+// nebo za dobu "+90m" / "+2h".
+func parseAt(v string, now time.Time) (time.Time, error) {
+	if d, ok := strings.CutPrefix(v, "+"); ok {
+		m, err := minutes(d)
+		if err != nil {
+			return time.Time{}, err
+		}
+		return now.Add(time.Duration(m) * time.Minute), nil
+	}
+	if t, err := time.ParseInLocation("15:04", v, now.Location()); err == nil {
+		at := time.Date(now.Year(), now.Month(), now.Day(), t.Hour(), t.Minute(), 0, 0, now.Location())
+		if !at.After(now) {
+			at = at.AddDate(0, 0, 1)
+		}
+		return at, nil
+	}
+	if t, err := time.ParseInLocation("2006-01-02 15:04", v, now.Location()); err == nil {
+		return t, nil
+	}
+	if t, err := time.Parse(time.RFC3339, v); err == nil {
+		return t, nil
+	}
+	return time.Time{}, usageErr(fmt.Sprintf("--at %q: čekám 19:05, \"2026-10-27 06:30\" nebo +90m", v))
 }
 
 // procRunning: běží na tomhle stroji proces, jehož příkazová řádka obsahuje vzor?
