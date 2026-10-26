@@ -129,3 +129,11 @@ func metricsText(m map[string]Count) string {
 	}
 	return "\n" + strings.Join(parts, " · ")
 }
+
+// clock: čas pro lidi — dnes jen hodiny, jindy i den.
+func clock(t, now time.Time) string {
+	if t.Format("2006-01-02") == now.Format("2006-01-02") {
+		return t.Format("15:04")
+	}
+	return t.Format("2. 1. 15:04")
+}

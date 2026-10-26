@@ -9,7 +9,8 @@ profile_order: [comfy, llm, gemma, director, gptoss]
 profiles:
   comfy:   # ComfyUI (~52 GiB) + flux-schnell NIM (17) + TTS
     services: [comfyui, flux-schnell, tts]
-    up: ~/deploy/WorldLibraryProject/deploy/spark/rag-schedule.sh comfy
+    # systemctl start se vrátí dřív, než ComfyUI poslouchá; 25. 10. na tom spadla úloha (connection refused)
+    up: '~/deploy/WorldLibraryProject/deploy/spark/rag-schedule.sh comfy && timeout 180 sh -c "until curl -sf -o /dev/null http://127.0.0.1:8188/system_stats; do sleep 2; done"'
     detect: systemctl --user is-active --quiet comfyui
     switch_min: 2
   llm:     # qwen36-agent (36,5) + flux-schnell (17) + TTS
@@ -73,8 +74,10 @@ default_project_max: 20
 # Přechodné pevné rezervace pro klienty, kteří broker zatím volat neumí.
 # PromoClown heartbeat (OpenClaw activeHours) potřebuje qwen36; až si o něj
 # řekne sám přes POST /v1/jobs, tahle položka zmizí.
-recurring:
-  - {name: promoclown-heartbeat, project: promoclown, services: [qwen36], from: "17:05", to: "00:55", priority: 90}
+# Od 26. 10. 2026 vypnuté (uživatele heartbeat teď nezajímá); jednorázové akce na čas
+# řeší `sparkctl … --at`, recurring je jen pro denní pevné okno.
+recurring: []
+#  - {name: promoclown-heartbeat, project: promoclown, services: [qwen36], from: "19:05", to: "00:55", priority: 90}
 
 mem_reserve_gib: 8
 temp_pause_c: 87

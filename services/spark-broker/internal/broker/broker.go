@@ -152,6 +152,7 @@ type SubmitReq struct {
 	Title          string     `json:"title"`
 	Priority       int        `json:"priority"`
 	Deadline       *time.Time `json:"deadline"`
+	NotBefore      *time.Time `json:"not_before"` // nestartovat dřív; pak předbíhá dlouhé úlohy
 	Preemptible    *bool      `json:"preemptible"`
 	Resume         bool       `json:"resume"`
 	Heartbeat      *bool      `json:"heartbeat"`
@@ -214,7 +215,7 @@ func (b *Broker) Submit(r SubmitReq) (*Job, error) {
 	}
 	j := &Job{
 		After:   r.After,
-		Project: r.Project, Session: r.Session, Title: r.Title, Deadline: r.Deadline,
+		Project: r.Project, Session: r.Session, Title: r.Title, Deadline: r.Deadline, NotBefore: r.NotBefore,
 		Resume: r.Resume, OnBehalfOfUser: r.OnBehalfOfUser, UserQuote: r.UserQuote,
 		Stages: r.Stages, State: Queued, Created: now, Notify: true, RequestedPriority: r.Priority,
 		IdleCloseMin: r.IdleCloseMin,
@@ -245,6 +246,9 @@ func (b *Broker) Submit(r SubmitReq) (*Job, error) {
 	b.st.Seq++
 	j.ID = fmt.Sprintf("%s-%d", now.Format("0102"), b.st.Seq)
 	j.event(now, "zařazena (priorita %d)", j.Priority)
+	if j.NotBefore != nil && j.NotBefore.After(now) {
+		j.event(now, "naplánovaná na %s", clock(*j.NotBefore, now))
+	}
 	b.st.Jobs = append(b.st.Jobs, j)
 	if r.OnBehalfOfUser {
 		b.note("🪟 <b>%s</b> · okno <b>%s</b> jménem uživatele (%s, priorita %d)\n„%s“\nzrušit: řekni Claudovi „zruš úlohu %s“",
@@ -522,8 +526,14 @@ func (b *Broker) queue() []*Job {
 			q = append(q, j)
 		}
 	}
+	now := b.opt.Now()
 	sort.SliceStable(q, func(a, c int) bool {
 		x, y := q[a], q[c]
+		// Jednorázová akce, jejíž čas nastal, jde před všechno ostatní — dlouhé úlohy
+		// se jen na chvíli přeruší. Mezi sebou se řadí zase podle priority.
+		if dx, dy := x.due(now), y.due(now); dx != dy {
+			return dx
+		}
 		if x.Priority != y.Priority {
 			return x.Priority > y.Priority
 		}
@@ -576,6 +586,10 @@ func (b *Broker) schedule(now time.Time) {
 
 	blockedHigher := false // vyšší úloha čeká na přepnutí — dál smí jen to, co jde kdykoli odsunout
 	for _, j := range b.queue() {
+		if j.NotBefore != nil && now.Before(*j.NotBefore) {
+			j.Waiting = "naplánovaná na " + clock(*j.NotBefore, now)
+			continue
+		}
 		if dep := b.pendingDep(j); dep != nil {
 			j.Waiting = fmt.Sprintf("po %s (%s: %s)", dep.ID, dep.Project, dep.Title)
 			continue
@@ -630,7 +644,7 @@ func (b *Broker) schedule(now time.Time) {
 				continue
 			}
 			active = append(active, a)
-			if !a.Preemptible || a.Priority >= j.Priority {
+			if !a.Preemptible || (a.Priority >= j.Priority && !preemptsLong(j, a, now)) || preemptsLong(a, j, now) {
 				blocker = fmt.Sprintf("%s (%s, priorita %d", a.ID, a.Project, a.Priority)
 				if a.LeaseUntil != nil {
 					blocker += ", do " + a.LeaseUntil.Format("15:04")
@@ -653,6 +667,15 @@ func (b *Broker) schedule(now time.Time) {
 		b.switchProfile(target, j, now)
 		return
 	}
+}
+
+// preemptsLong: jednorázová akce na čas (její čas nastal) smí odsunout dlouhou úlohu
+// bez ohledu na prioritu — dlouhá = přerušitelná a umí navázat (run s resume, exec
+// přes sparkctl), takže ztratí jen pár minut. Lease bez resume (tribute, okno) chrání
+// dál priorita: odsunutí by ho zabilo, ne přerušilo.
+// Platí i obráceně: běžící akci na čas dlouhá úloha zpátky neodsune (jinak by se přetahovaly).
+func preemptsLong(j, a *Job, now time.Time) bool {
+	return j.due(now) && a.NotBefore == nil && a.Preemptible && a.Resume
 }
 
 // pendingDep vrátí první úlohu z After, která ještě neskončila.
