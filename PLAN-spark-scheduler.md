@@ -40,15 +40,15 @@ Základ (OS, LiteLLM, gateway, chroma, law-chat, library-chat, postiz, kontejner
 | Profil | Nahoře | GiB | Slouží |
 |---|---|---|---|
 | **comfy** | ComfyUI (≤ 52) + TTS; audio (25) jen na vyžádání; flux-schnell NIM od 2026-10-27 ne (ComfyUI vedle něj počítalo na CPU) | ~90 | lab a tier 2 StoryTelleru, Kirian, Stickers, PromoClown tributy, MusicStudio |
-| **llm** | qwen36 (36,5) + flux-schnell NIM (17) | ~75 | Právník chat, ToyShaders, Knihovník chat, PromoClown heartbeat, **tier 0 obrázky**; `vl` (20) na vyžádání |
-| **gemma** (na vyžádání) | Gemma-4 (util 0,40 ≈ 49) + flux-schnell (17) | ~86 | agent Právníka místo qwen36 |
+| **llm** | qwen36 (36,5); flux-schnell NIM (17) jako doplněk na vyžádání | ~75 | Právník chat, ToyShaders, Knihovník chat, PromoClown heartbeat, **tier 0 obrázky**; `vl` (20) na vyžádání |
+| **gemma** (na vyžádání) | Gemma-4 (util 0,40 ≈ 49); flux-schnell (17) jako doplněk | ~86 | agent Právníka místo qwen36 |
 | **director** | swarm-director 0,75 (91) sám | ~111 | Knihovník enrich + Kindlify chapters + StoryTeller RAG |
 
 - **Nano-30B, swarm-embed a swarm-litellm z profilu llm vypadly** — sloužily jen AiSwarmBattle (cold);
   ToyShaders jede na qwen36. Vrátí se s ním (Nano util 0,22 = 27 GiB se vedle qwen36 + flux-schnell vejde).
 - **flux-schnell NIM v profilu llm** (nové): TensorRT engine si paměť alokuje celou při startu a nepadá na CPU,
   takže na něj pravidlo „ComfyUI vedle LLM“ nedopadá (ten incident byl torch v ComfyUI, který vidí jen MemFree).
-  Tier 0 obrázky přes gen-queue (`/nim/flux-schnell`, 1–2 s/obrázek) jsou pak k dispozici v llm (a gemma) okně; z comfy vyřazen 2026-10-27.
+  Tier 0 obrázky přes gen-queue (`/nim/flux-schnell`, 1–2 s/obrázek) — od 2026-10-28 samostatná služba na vyžádání: broker ho zapne jako doplněk k comfy, llm i gemma, když o něj úloha požádá (`flux-schnell` ve službách), a po ní vypne.
   Vedle directora ne — 25. 9. to shodilo celý stroj.
 - **Audio v comfy jen na vyžádání** (od 2026-10-06): `docker start audio-music audio-sfx` nebo controller
   `/ctrl/activate?model=audio-music`; při přepnutí z comfy se zastaví. S audiem a flux-schnell naráz nezbývalo

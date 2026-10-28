@@ -21,7 +21,7 @@ func TestExampleConfig(t *testing.T) {
 		"director":     "director",
 		"gptoss":       "gptoss",
 		"audio-music":  "comfy",
-		"flux-schnell": "llm", // od 2026-10-27 v comfy není
+		"flux-schnell": "comfy", // doplněk na vyžádání (comfy, llm, gemma)
 	} {
 		if got, ok := c.Target("", []string{svcs}); !ok || got != want {
 			t.Errorf("%s → %q, čekal %q", svcs, got, want)
