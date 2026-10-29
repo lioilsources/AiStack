@@ -304,6 +304,56 @@ func TestIdleUserWindowClosesAfterWarning(t *testing.T) {
 	e.want(w.ID, Done)
 }
 
+// „Nechám doběhnout lab“ (29. 10.): okno until_idle přežije svůj lease, dokud v ComfyUI
+// přibývají prompty, a zavře se až po nečinnosti — ne uprostřed běhu.
+func TestUntilIdleWindowOutlivesLeaseWhileUsed(t *testing.T) {
+	e := newEnv(t, true, "comfy")
+	e.ex.probe.ComfyActive = 1
+	e.b.probe = e.ex.probe
+	w := e.submit(SubmitReq{Project: "user", OnBehalfOfUser: true, UserQuote: "nechám doběhnout lab", UntilIdle: true,
+		Stages: []Stage{{Services: []string{"comfyui"}, LeaseMin: 60}}})
+	e.tick()
+	e.want(w.ID, Running)
+	for i := 0; i < 12; i++ { // 3 h práce, prompt každých 15 min
+		e.b.probe.ComfyActive++
+		e.adv(15 * time.Minute)
+	}
+	e.want(w.ID, Running)
+	if j, _ := e.b.Get(w.ID); !j.LeaseUntil.After(e.now) {
+		t.Fatalf("lease %v neprodloužen (teď %v)", j.LeaseUntil, e.now)
+	}
+	e.adv(31 * time.Minute) // nic se neděje → varování
+	e.adv(16 * time.Minute)
+	e.want(w.ID, Done)
+}
+
+// Bez ComfyUI drží okno until_idle heartbeat (sparkctl hb), ne prompty.
+func TestUntilIdleHeartbeatKeepsNonComfyWindow(t *testing.T) {
+	e := newEnv(t, true, "llm")
+	w := e.submit(SubmitReq{Project: "user", OnBehalfOfUser: true, UserQuote: "qwen než dopíšu", UntilIdle: true,
+		Stages: []Stage{{Services: []string{"qwen36"}, LeaseMin: 60}}})
+	e.tick()
+	e.want(w.ID, Running)
+	for i := 0; i < 8; i++ {
+		e.adv(15 * time.Minute)
+		if _, err := e.b.Heartbeat(w.ID, nil); err != nil {
+			t.Fatal(err)
+		}
+	}
+	e.want(w.ID, Running)
+	e.adv(50 * time.Minute)
+	e.want(w.ID, Done)
+}
+
+func TestUntilIdleOnlyForLease(t *testing.T) {
+	e := newEnv(t, true, "comfy")
+	_, err := e.b.Submit(SubmitReq{Project: "webtoon", UntilIdle: true, Resume: true,
+		Stages: []Stage{{Services: []string{"comfyui"}, Mode: ModeRun, Command: "x"}}})
+	if err == nil {
+		t.Fatal("run s until_idle prošel")
+	}
+}
+
 func TestPriorityAboveProjectMaxNeedsApproval(t *testing.T) {
 	e := newEnv(t, true, "comfy")
 	j := e.submit(lease("webtoon", 80, "comfyui"))
