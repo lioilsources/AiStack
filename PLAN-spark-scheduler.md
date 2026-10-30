@@ -17,7 +17,7 @@ review); rozvrh s ním nepočítá, dokud se neodblokuje (§6).
 
 | # | Projekt | Stav | Co na SPARKu | Profil | Objem |
 |---|---|---|---|---|---|
-| 1 | **StoryTeller** | aktivní | a) RAG dávky (world hints, extract) na directoru; b) obrázky: tier 0 flux-schnell, tier 2 a lab v ComfyUI | director; comfy (+ flux-schnell) | world hints ~55 h directora; lab vlny C–E ~2 h; tier 2 až po ref2img |
+| 1 | **StoryTeller** | aktivní | a) RAG dávky (world hints, extract) na directoru; b) obrázky: tier 0 flux-schnell, tier 2 a lab v ComfyUI | director; comfy; llm (flux-schnell) | world hints ~55 h directora; lab vlny C–E ~2 h; tier 2 až po ref2img |
 | 2 | **ToyShaders** (MirrorBooth ShaderGen) | aktivní | LLM `openclaw-default` (qwen36, kód + vidění) přes LiteLLM | llm | 2–4 okna celkem, pak ~1 h 1–2× týdně |
 | 3 | **Knihovník** | aktivní | `library-enrich` (enrich_chunks) na directoru; chat přes řetěz `translate → openclaw-default → swarm-director → fallback` | director; chat v každém okně | enrich_chunks velkých děl + enrich_works: další noci |
 | 4 | **Právník** | aktivní | `law-chat` (e5, 1,3 GiB, pořád); chat přes řetěz jako Knihovník; agent `pravnik-agent` → Gemma-4 | llm; gemma na vyžádání | interaktivní; agent ~4–5 min/návrh |
@@ -39,16 +39,16 @@ Základ (OS, LiteLLM, gateway, chroma, law-chat, library-chat, postiz, kontejner
 
 | Profil | Nahoře | GiB | Slouží |
 |---|---|---|---|
-| **comfy** | ComfyUI (≤ 52) + flux-schnell NIM (17); audio (25) jen na vyžádání | ~90 | lab a tier 2 StoryTelleru, Kirian, Stickers, PromoClown tributy, MusicStudio |
-| **llm** | qwen36 (36,5) + flux-schnell NIM (17) | ~75 | Právník chat, ToyShaders, Knihovník chat, PromoClown heartbeat, **tier 0 obrázky**; `vl` (20) na vyžádání |
-| **gemma** (na vyžádání) | Gemma-4 (util 0,40 ≈ 49) + flux-schnell (17) | ~86 | agent Právníka místo qwen36 |
+| **comfy** | ComfyUI (≤ 52) + TTS; audio (25) jen na vyžádání; flux-schnell NIM od 2026-10-27 ne (ComfyUI vedle něj počítalo na CPU) | ~90 | lab a tier 2 StoryTelleru, Kirian, Stickers, PromoClown tributy, MusicStudio |
+| **llm** | qwen36 (36,5); flux-schnell NIM (17) jako doplněk na vyžádání | ~75 | Právník chat, ToyShaders, Knihovník chat, PromoClown heartbeat, **tier 0 obrázky**; `vl` (20) na vyžádání |
+| **gemma** (na vyžádání) | Gemma-4 (util 0,40 ≈ 49); flux-schnell (17) jako doplněk | ~86 | agent Právníka místo qwen36 |
 | **director** | swarm-director 0,75 (91) sám | ~111 | Knihovník enrich + Kindlify chapters + StoryTeller RAG |
 
 - **Nano-30B, swarm-embed a swarm-litellm z profilu llm vypadly** — sloužily jen AiSwarmBattle (cold);
   ToyShaders jede na qwen36. Vrátí se s ním (Nano util 0,22 = 27 GiB se vedle qwen36 + flux-schnell vejde).
 - **flux-schnell NIM v profilu llm** (nové): TensorRT engine si paměť alokuje celou při startu a nepadá na CPU,
   takže na něj pravidlo „ComfyUI vedle LLM“ nedopadá (ten incident byl torch v ComfyUI, který vidí jen MemFree).
-  Tier 0 obrázky přes gen-queue (`/nim/flux-schnell`, 1–2 s/obrázek) jsou pak k dispozici v comfy i llm okně.
+  Tier 0 obrázky přes gen-queue (`/nim/flux-schnell`, 1–2 s/obrázek) — od 2026-10-28 samostatná služba na vyžádání: broker ho zapne jako doplněk k comfy, llm i gemma, když o něj úloha požádá (`flux-schnell` ve službách), a po ní vypne.
   Vedle directora ne — 25. 9. to shodilo celý stroj.
 - **Audio v comfy jen na vyžádání** (od 2026-10-06): `docker start audio-music audio-sfx` nebo controller
   `/ctrl/activate?model=audio-music`; při přepnutí z comfy se zastaví. S audiem a flux-schnell naráz nezbývalo

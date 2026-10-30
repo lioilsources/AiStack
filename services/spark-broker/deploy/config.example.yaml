@@ -7,19 +7,19 @@
 profile_order: [comfy, llm, gemma, director, gptoss]
 
 profiles:
-  comfy:   # ComfyUI (~52 GiB) + flux-schnell NIM (17) + TTS
-    services: [comfyui, flux-schnell, tts]
+  comfy:   # ComfyUI (~52 GiB) + TTS; flux-schnell NIM jen jako doplněk (2026-10-27: vedle ComfyUI bral MemFree)
+    services: [comfyui, tts]
     # systemctl start se vrátí dřív, než ComfyUI poslouchá; 25. 10. na tom spadla úloha (connection refused)
     up: '~/deploy/WorldLibraryProject/deploy/spark/rag-schedule.sh comfy && timeout 180 sh -c "until curl -sf -o /dev/null http://127.0.0.1:8188/system_stats; do sleep 2; done"'
     detect: systemctl --user is-active --quiet comfyui
     switch_min: 2
-  llm:     # qwen36-agent (36,5) + flux-schnell (17) + TTS
-    services: [qwen36, flux-schnell, tts]
+  llm:     # qwen36-agent (36,5) + TTS; flux-schnell jen jako doplněk na vyžádání
+    services: [qwen36, tts]
     up: ~/deploy/WorldLibraryProject/deploy/spark/rag-schedule.sh llm
     detect: '! systemctl --user is-active --quiet comfyui && [ "$(docker inspect -f {{.State.Running}} qwen36-agent 2>/dev/null)" = true ]'
     switch_min: 3
-  gemma:   # Gemma-4 (util 0.40 ≈ 49) + flux-schnell — agent Právníka
-    services: [gemma, flux-schnell]
+  gemma:   # Gemma-4 (util 0.40 ≈ 49) — agent Právníka; flux-schnell jen jako doplněk
+    services: [gemma]
     up: ~/deploy/WorldLibraryProject/deploy/spark/rag-schedule.sh gemma
     down: docker rm -f bench-gemma
     detect: '[ "$(docker inspect -f {{.State.Running}} bench-gemma 2>/dev/null)" = true ]'
@@ -41,6 +41,13 @@ profiles:
 
 # Doplňky: dají se přidat k profilu na vyžádání a broker je shodí, když je nikdo nechce.
 addons:
+  flux-schnell:  # NIM (17 GiB) — samostatná služba na vyžádání (uživatel 28. 10.), vedle directora ne
+    profiles: [comfy, llm, gemma]
+    up: docker start flux-schnell && for i in $(seq 90); do curl -sf -m5 -o /dev/null localhost:8030/v1/health/ready && exit 0; sleep 10; done; exit 1
+    down: docker stop flux-schnell
+    detect: '[ "$(docker inspect -f {{.State.Running}} flux-schnell 2>/dev/null)" = true ]'
+    mem_gib: 17
+    max_jobs: 4
   audio-music:   # ACE-Step 1.5 — v comfy se samo nestartuje (6. 10.), jen na vyžádání
     profiles: [comfy]
     up: docker start audio-music && for i in $(seq 60); do curl -sf -m5 localhost:8093/v1/audio/models | grep -q '"name":"acestep-v15-turbo"[^}]*"available":true' && exit 0; sleep 10; done; exit 1

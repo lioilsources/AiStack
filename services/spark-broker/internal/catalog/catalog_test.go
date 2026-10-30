@@ -21,7 +21,7 @@ func TestExampleConfig(t *testing.T) {
 		"director":     "director",
 		"gptoss":       "gptoss",
 		"audio-music":  "comfy",
-		"flux-schnell": "comfy",
+		"flux-schnell": "comfy", // doplněk na vyžádání (comfy, llm, gemma)
 	} {
 		if got, ok := c.Target("", []string{svcs}); !ok || got != want {
 			t.Errorf("%s → %q, čekal %q", svcs, got, want)
@@ -29,6 +29,9 @@ func TestExampleConfig(t *testing.T) {
 	}
 	if got, _ := c.Target("llm", []string{"flux-schnell"}); got != "llm" {
 		t.Errorf("flux v llm se nemá přepínat, dostal %s", got)
+	}
+	if got, _ := c.Target("comfy", []string{"comfyui"}); got != "comfy" {
+		t.Errorf("comfyui v comfy se nemá přepínat, dostal %s", got)
 	}
 	if _, ok := c.Target("", []string{"comfyui", "qwen36"}); ok {
 		t.Error("ComfyUI s qwen36 nesmí jít dohromady")
