@@ -68,6 +68,7 @@ type Job struct {
 	Resume       bool       `json:"resume"` // run: po SIGTERM jde bezpečně pustit znovu
 	Heartbeat    bool       `json:"heartbeat"`
 	IdleCloseMin int        `json:"idle_close_min,omitempty"` // lease: zavřít po N min bez aktivity v ComfyUI
+	UntilIdle    bool       `json:"until_idle,omitempty"`     // lease: prodlužuje se, dokud se používá
 	Recurring    string     `json:"recurring,omitempty"`
 	Notify       bool       `json:"notify"` // souhrn po skončení (chyby se hlásí vždy)
 

@@ -26,8 +26,10 @@ Přehled
   sparkctl status | catalog                   surový stav · profily, služby, stropy priorit (JSON)
 
 Okno uživatele (priorita 100, jen s doslovnými slovy uživatele)
-  sparkctl window <služby> <délka> "<slova uživatele>"
+  sparkctl window <služby> <délka|idle> "<slova uživatele>"
       např. sparkctl window comfyui 3h "chci comfy na 3 hodiny"
+      délka idle = dokud se používá: okno se samo prodlužuje a zavře se až po
+      30 min bez promptu v ComfyUI / bez heartbeatu („nechám doběhnout lab“)
 
 Úlohy
   sparkctl lease <projekt> <služby> <min> [priorita] [název]   rezervace; vypíše id, čeká na running
@@ -123,13 +125,17 @@ func run(args []string) error {
 		if err := need(3, `window <služby> <délka> "<doslovná slova uživatele>"`); err != nil {
 			return err
 		}
-		min, err := minutes(args[1])
-		if err != nil {
-			return err
+		untilIdle := args[1] == "idle"
+		min := 60 // idle: první lease, pak se prodlužuje po 30 min
+		if !untilIdle {
+			var err error
+			if min, err = minutes(args[1]); err != nil {
+				return err
+			}
 		}
 		return c.submitAndWait(o, broker.SubmitReq{
 			Project: "user", Session: session(), Title: "okno " + args[0], After: o.after, NotBefore: o.at,
-			OnBehalfOfUser: true, UserQuote: args[2],
+			OnBehalfOfUser: true, UserQuote: args[2], UntilIdle: untilIdle,
 			Stages: []broker.Stage{{Services: services(args[0]), Mode: broker.ModeLease, LeaseMin: min}},
 		})
 	case "lease", "exec":

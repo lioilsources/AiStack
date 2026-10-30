@@ -147,19 +147,22 @@ func (b *Broker) SetProbe(p Probe) {
 // ---------------------------------------------------------------- požadavky
 
 type SubmitReq struct {
-	Project        string     `json:"project"`
-	Session        string     `json:"session"`
-	Title          string     `json:"title"`
-	Priority       int        `json:"priority"`
-	Deadline       *time.Time `json:"deadline"`
-	NotBefore      *time.Time `json:"not_before"` // nestartovat dřív; pak předbíhá dlouhé úlohy
-	Preemptible    *bool      `json:"preemptible"`
-	Resume         bool       `json:"resume"`
-	Heartbeat      *bool      `json:"heartbeat"`
-	IdleCloseMin   int        `json:"idle_close_min"`
-	OnBehalfOfUser bool       `json:"on_behalf_of_user"`
-	UserQuote      string     `json:"user_quote"`
-	Notify         *bool      `json:"notify"`
+	Project      string     `json:"project"`
+	Session      string     `json:"session"`
+	Title        string     `json:"title"`
+	Priority     int        `json:"priority"`
+	Deadline     *time.Time `json:"deadline"`
+	NotBefore    *time.Time `json:"not_before"` // nestartovat dřív; pak předbíhá dlouhé úlohy
+	Preemptible  *bool      `json:"preemptible"`
+	Resume       bool       `json:"resume"`
+	Heartbeat    *bool      `json:"heartbeat"`
+	IdleCloseMin int        `json:"idle_close_min"`
+	// Lease bez pevného konce: prodlužuje se, dokud se prostředí používá (prompty
+	// v ComfyUI nebo heartbeat), a zavře se až po IdleCloseMin nečinnosti.
+	UntilIdle      bool   `json:"until_idle"`
+	OnBehalfOfUser bool   `json:"on_behalf_of_user"`
+	UserQuote      string `json:"user_quote"`
+	Notify         *bool  `json:"notify"`
 	// Úloha se zařadí hned (vidět v ls), ale nestartuje, dokud tyhle úlohy neskončí (jakkoli).
 	After  []string `json:"after"`
 	Stages []Stage  `json:"stages"`
@@ -218,7 +221,7 @@ func (b *Broker) Submit(r SubmitReq) (*Job, error) {
 		Project: r.Project, Session: r.Session, Title: r.Title, Deadline: r.Deadline, NotBefore: r.NotBefore,
 		Resume: r.Resume, OnBehalfOfUser: r.OnBehalfOfUser, UserQuote: r.UserQuote,
 		Stages: r.Stages, State: Queued, Created: now, Notify: true, RequestedPriority: r.Priority,
-		IdleCloseMin: r.IdleCloseMin,
+		IdleCloseMin: r.IdleCloseMin, UntilIdle: r.UntilIdle,
 	}
 	if j.Title == "" {
 		j.Title = r.Stages[0].Name
@@ -239,7 +242,14 @@ func (b *Broker) Submit(r SubmitReq) (*Job, error) {
 	if r.Heartbeat != nil {
 		j.Heartbeat = *r.Heartbeat
 	}
-	if r.OnBehalfOfUser && j.IdleCloseMin == 0 && usesComfy(j) {
+	if j.UntilIdle {
+		for _, s := range j.Stages {
+			if s.Mode != ModeLease {
+				return nil, bad("until_idle jen pro lease (stage %s je %s)", s.Name, s.Mode)
+			}
+		}
+	}
+	if j.IdleCloseMin == 0 && ((r.OnBehalfOfUser && usesComfy(j)) || j.UntilIdle) {
 		j.IdleCloseMin = 30
 	}
 	b.setPriority(j, r.Priority, now)
@@ -361,6 +371,9 @@ func (b *Broker) Heartbeat(id string, m map[string]Count) (*Job, error) {
 		return clone(j), conflict("úloha už skončila (%s)", j.State)
 	}
 	j.LastHeartbeat = &now
+	if j.UntilIdle {
+		j.LastActivity, j.IdleWarned = &now, false // heartbeat = okno se používá
+	}
 	j.addMetrics(m)
 	b.saveLocked()
 	return clone(j), nil
@@ -828,8 +841,8 @@ func (b *Broker) watchLeases(now time.Time) {
 				esc(j.Project), esc(j.Title), esc(j.Error), esc(j.Project))
 			continue
 		}
-		if j.IdleCloseMin > 0 && usesComfy(j) {
-			if comfyChanged {
+		if j.IdleCloseMin > 0 && (usesComfy(j) || j.UntilIdle) {
+			if comfyChanged && usesComfy(j) {
 				j.LastActivity, j.IdleWarned = &now, false
 			}
 			idle := now.Sub(*j.LastActivity)
@@ -845,10 +858,20 @@ func (b *Broker) watchLeases(now time.Time) {
 			}
 		}
 		if j.LeaseUntil != nil && now.After(*j.LeaseUntil) {
+			if j.UntilIdle {
+				// Používá se (nečinné by zavřel blok výš) — o kus dál, ne konec.
+				t := now.Add(untilIdleStep)
+				j.LeaseUntil = &t
+				j.event(now, "okno se používá, prodlouženo do %s", clock(t, now))
+				continue
+			}
 			b.finishStage(j, now, "lease vypršel")
 		}
 	}
 }
+
+// untilIdleStep: o kolik se okno until_idle posune, když mu vyprší lease a pořád se používá.
+const untilIdleStep = 30 * time.Minute
 
 func (b *Broker) finishStage(j *Job, now time.Time, why string) {
 	st := j.Stage()

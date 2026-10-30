@@ -52,6 +52,8 @@ func overview(w io.Writer, st broker.Status, jobs []*broker.Job, now time.Time) 
 		switch {
 		case j.State == broker.Queued:
 			info = "čeká: " + j.Waiting
+		case j.UntilIdle && j.StageStarted != nil:
+			info = fmt.Sprintf("do nečinnosti (%d min) · běží %s", j.IdleCloseMin, span(now.Sub(*j.StageStarted)))
 		case j.LeaseUntil != nil:
 			info = "zbývá " + span(j.LeaseUntil.Sub(now))
 		case j.StageStarted != nil:

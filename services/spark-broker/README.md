@@ -20,7 +20,7 @@ navždy. Plán a rozhodnutí: `PLAN-spark-broker.md` v kořeni repa.
 | **úloha** | `project`, `priority`, `stages[]`. Stage = služby, které musí běžet spolu + `mode`. |
 | **lease** | broker jen připraví prostředí, session volá HTTP sama a posílá heartbeat; bez heartbeatu 10 min = sirotek, SPARK se uvolní. |
 | **run** | příkaz spouští broker na SPARKu (`bash -lc`); log v `~/spark-broker/logs/`. Poslední JSON řádek výstupu = metriky do souhrnu. |
-| **okno uživatele** | `on_behalf_of_user: true` + `user_quote` (doslovná slova uživatele): priorita 100, neodsouvá se, bez heartbeatu; ComfyUI okno se po 30 min nečinnosti připomene a po dalších 15 zavře. Každé se ohlásí na Telegramu i s citací, takže je vidět, kdo o něj jménem uživatele požádal. |
+| **okno uživatele** | `on_behalf_of_user: true` + `user_quote` (doslovná slova uživatele): priorita 100, neodsouvá se, bez heartbeatu; ComfyUI okno se po 30 min nečinnosti připomene a po dalších 15 zavře. `until_idle: true` (`sparkctl window <služby> idle "…"`) nemá pevný konec: lease se po 30 min posouvá, dokud se okno používá (prompty v ComfyUI, u jiných služeb `sparkctl hb`), a zavře ho až nečinnost — pro „nechám doběhnout lab“. Každé se ohlásí na Telegramu i s citací, takže je vidět, kdo o něj jménem uživatele požádal. |
 
 **Priorita**: 0 backlog · strop projektu (`projects` v konfiguraci, default 20) ·
 90 PromoClown · 100 uživatel. Víc, než je strop projektu, si úloha sama nedá:
