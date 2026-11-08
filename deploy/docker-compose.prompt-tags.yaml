@@ -1,0 +1,67 @@
+# prompt-tags — překlad prózy na Danbooru tagy pro FineTuneGallery (POST /api/translate)
+#
+# Booru checkpointy (Pony, Illustrious, NoobAI, Animagine, WAI…) čtou tagy, appka
+# Ol1nLLM jim posílá volný text. Galerie ho přeloží na jednom místě (cache podle
+# hashe, filtr proti slovníku WD14, verze na každém nodu) a volá tenhle alias.
+#
+# Proč malý model a proč doplněk profilu comfy:
+#   - Překlad běží ve chvíli, kdy appka generuje — tedy vedle ComfyUI (~52 GiB).
+#     Katalog brokera: „ComfyUI nikdy vedle LLM ≥ 30 GiB", a flux-schnell (17 GiB)
+#     z comfy vypadl 27. 10., protože vedle ComfyUI bral MemFree. Nano-30B (≥ 18 GiB)
+#     by dopadl stejně.
+#   - Úloha je úzká: jedna řádka tagů, filtr slovníku v galerii zahodí, co model
+#     vymyslí. Qwen3-4B-AWQ (~2,5 GB vah) na 4k kontextu se vejde do ~7 GiB.
+#   - Model za aliasem se mění v .env (HF_MODEL_PROMPT_TAGS); galerie verzuje
+#     "prompt-tags@<verze promptu>" a rozhoduje `finetune-gallery tagbench`.
+#
+# Spouští broker jako doplněk (services/spark-broker/deploy/config.example.yaml:
+# addons.prompt-tags), ručně: make up-prompt-tags / down-prompt-tags.
+# LiteLLM: alias prompt-tags, ZÁMĚRNĚ mimo router_settings.fallbacks — jiný model
+# pod stejnou verzí by zneplatnil provenience překladu; dole = galerie 502 a appka
+# pošle prózu (fail open).
+#
+# Env: SWARM_VLLM_VERSION, HF_TOKEN, HF_MODEL_PROMPT_TAGS, CACHE_PROMPT_TAGS
+
+services:
+  prompt-tags:
+    image: vllm/vllm-openai:${SWARM_VLLM_VERSION:-v0.20.0}
+    container_name: prompt-tags
+    restart: unless-stopped
+    # entrypoint image je `vllm serve` → command začíná rovnou modelem.
+    # 0.06 × 121,7 GiB ≈ 7,3 GiB: váhy 2,5 + KV pro 4 × 4k + CUDA graphs.
+    # Bez tool parseru — překladač nástroje nevolá. Thinking vypíná alias.
+    command: >
+      ${HF_MODEL_PROMPT_TAGS:-Qwen/Qwen3-4B-AWQ}
+      --served-model-name prompt-tags
+      --gpu-memory-utilization 0.06
+      --max-model-len 4096
+      --max-num-seqs 4
+      --trust-remote-code
+    environment:
+      - HF_TOKEN=${HF_TOKEN}
+      - HF_HUB_OFFLINE=1
+    ports:
+      - "127.0.0.1:8015:8000"
+    shm_size: 2gb
+    volumes:
+      - ${CACHE_PROMPT_TAGS}:/root/.cache/huggingface/hub
+    networks:
+      - internal
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8000/v1/models"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 300s
+
+networks:
+  internal:
+    external: true
+    name: ai

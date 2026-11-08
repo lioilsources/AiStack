@@ -9,6 +9,7 @@ COMPOSE_TRANSLATE := docker compose -f deploy/docker-compose.translate.yaml --en
 COMPOSE_VL := docker compose -f deploy/docker-compose.vl.yaml --env-file .env
 COMPOSE_AUDIO     := docker compose -f deploy/docker-compose.audio.yaml --env-file .env
 COMPOSE_AGENT     := docker compose -f deploy/docker-compose.agent.yaml --env-file .env
+COMPOSE_PROMPT_TAGS := docker compose -f deploy/docker-compose.prompt-tags.yaml --env-file .env
 
 .PHONY: build up down logs ps \
         up-llm up-image up-ocr \
@@ -27,7 +28,8 @@ COMPOSE_AGENT     := docker compose -f deploy/docker-compose.agent.yaml --env-fi
         up-audio-tts up-audio-tts-xtts up-audio-tts-chatterbox stop-audio-tts-gpu \
         build-audio-tts build-audio-tts-gpu download-audio-tts smoke-audio-tts logs-audio-tts \
         up-agent down-agent logs-agent download-agent \
-        gateway-build gateway-run oom-guard-build
+        gateway-build gateway-run oom-guard-build \
+        up-prompt-tags down-prompt-tags download-prompt-tags
 
 ## Full stack
 build:
@@ -158,6 +160,14 @@ down-agent:
 logs-agent:
 	$(COMPOSE_AGENT) logs -f --tail=50
 
+## prompt-tags — překladač prózy na Danbooru tagy pro FineTuneGallery (~7 GiB)
+## Doplněk profilu comfy v brokeru; ručně jen mimo control režim brokera.
+up-prompt-tags:
+	$(COMPOSE_PROMPT_TAGS) up -d
+
+down-prompt-tags:
+	$(COMPOSE_PROMPT_TAGS) down
+
 ## Translate module
 # up-translate       plný profil (57 GiB) — nejrychlejší obohacení korpusu
 # up-translate-lean  úsporný (~36 GiB) — vejde se vedle ComfyUI, o 49 % pomalejší
@@ -258,6 +268,9 @@ download-flux-lora:
 
 download-qwen-vl:
 	env $$(grep -v '^#' .env | xargs) bash scripts/download_qwen_vl.sh
+
+download-prompt-tags:
+	env $$(grep -v '^#' .env | xargs) bash scripts/download_prompt_tags.sh
 
 download-ocr-models:
 	env $$(grep -v '^#' .env | xargs) bash scripts/download_ocr_models.sh

@@ -48,6 +48,16 @@ addons:
     detect: '[ "$(docker inspect -f {{.State.Running}} flux-schnell 2>/dev/null)" = true ]'
     mem_gib: 17
     max_jobs: 4
+  prompt-tags:   # Qwen3-4B-AWQ (~7 GiB) — FineTuneGallery překládá prózu z appky na Danbooru tagy.
+    # Patří k ComfyUI: appka generuje přes comfy a překlad je krok před renderem.
+    # Malý záměrně — Nano-30B (≥ 18 GiB) by vedle ComfyUI bral MemFree jako flux-schnell.
+    # Bez něj nic nepadá: galerie vrátí 502 a appka pošle prózu (fail open).
+    profiles: [comfy, llm, gemma]
+    up: cd ~/deploy/AiStack && make up-prompt-tags && for i in $(seq 60); do curl -sf -m5 -o /dev/null localhost:8015/v1/models && exit 0; sleep 5; done; exit 1
+    down: docker stop prompt-tags
+    detect: '[ "$(docker inspect -f {{.State.Running}} prompt-tags 2>/dev/null)" = true ]'
+    mem_gib: 8
+    max_jobs: 8
   audio-music:   # ACE-Step 1.5 — v comfy se samo nestartuje (6. 10.), jen na vyžádání
     profiles: [comfy]
     up: docker start audio-music && for i in $(seq 60); do curl -sf -m5 localhost:8093/v1/audio/models | grep -q '"name":"acestep-v15-turbo"[^}]*"available":true' && exit 0; sleep 10; done; exit 1
