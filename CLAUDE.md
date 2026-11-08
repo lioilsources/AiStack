@@ -57,6 +57,18 @@ cloudflared/                  Cloudflare tunnel credentials (llm.ol1n.com)
 Makefile                      hlavní vstupní bod všech operací
 ```
 
+## prompt-tags (FineTuneGallery)
+
+Alias `prompt-tags` v `litellm_config.yaml` → kontejner `prompt-tags`
+(`deploy/docker-compose.prompt-tags.yaml`, Qwen3-4B-AWQ, ~7 GiB, port 8015).
+Galerie na NAS ho volá přes gateway při každé generaci z appky na booru modelu
+a překládá prózu na Danbooru tagy. **Doplněk profilu `comfy` v brokeru**
+(`addons.prompt-tags`): appka generuje přes ComfyUI, takže překladač patří
+k němu — okno pro appku je `sparkctl window comfyui,prompt-tags idle "…"`.
+Malý záměrně: vedle ComfyUI nesmí LLM ≥ 30 GiB a i flux-schnell (17) bral MemFree.
+**Bez fallbacku** — kvůli provenience překladu; dole = appka pošle prózu.
+Model se mění v `.env` (`HF_MODEL_PROMPT_TAGS`), rozhoduje `finetune-gallery tagbench`.
+
 ## Cache konvence
 
 Fyzická data žijí v `cache/models/{provider}/{model-slug}/`:
