@@ -3,13 +3,18 @@
 # Volá AlienMatch (denní check-in: 10–20 s AAC 16 kHz mono), obecně pro krátké nahrávky.
 #
 # ~6 GiB (util 0.05 z 121; váhy ~1,6 GB). Vejde se vedle ComfyUI, vl i qwen36.
+# Obraz: vllm-openai + audio dekodéry (deploy/asr/Dockerfile), staví se při `make up-asr`.
 # Váhy: `make download-whisper` (cache/whisper), start jen s HF_HUB_OFFLINE=1.
 # Broker: doplněk `asr` (services/spark-broker/deploy/config.example.yaml).
 #
 #   make up-asr  /  make down-asr
 services:
   asr:
-    image: vllm/vllm-openai:${SWARM_VLLM_VERSION}
+    build:
+      context: ./asr
+      args:
+        SWARM_VLLM_VERSION: ${SWARM_VLLM_VERSION}
+    image: aistack/asr:${SWARM_VLLM_VERSION}
     container_name: asr
     command: >
       openai/whisper-large-v3-turbo
@@ -17,7 +22,6 @@ services:
       --gpu-memory-utilization 0.05
       --max-model-len 448
       --max-num-seqs 4
-      --task transcription
     environment:
       - HF_HUB_OFFLINE=1
     volumes:

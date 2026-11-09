@@ -142,7 +142,7 @@ down-vl:
 ## ASR (Whisper large-v3-turbo, ~6 GiB) — AlienMatch check-in, alias `asr`
 up-asr:
 	scripts/mem-admit.sh asr 0.05
-	$(COMPOSE_ASR) up -d
+	$(COMPOSE_ASR) up -d --build
 
 down-asr:
 	$(COMPOSE_ASR) down
