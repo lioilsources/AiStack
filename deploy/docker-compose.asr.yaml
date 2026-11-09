@@ -17,7 +17,6 @@ services:
       --gpu-memory-utilization 0.05
       --max-model-len 448
       --max-num-seqs 4
-      --task transcription
     environment:
       - HF_HUB_OFFLINE=1
     volumes:
