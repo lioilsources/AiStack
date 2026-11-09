@@ -62,6 +62,20 @@ addons:
     detect: '[ "$(docker inspect -f {{.State.Running}} audio-sfx 2>/dev/null)" = true ]'
     mem_gib: 12
     max_jobs: 1
+  vl:   # Qwen2.5-VL-7B (util 0.18 ≈ 20 GiB), LiteLLM alias `vl` — AlienMatch check-in, soudce ShaderGen; ne vedle qwen36
+    profiles: [comfy, gemma]
+    up: cd ~/deploy/AiStack && make up-vl && for i in $(seq 60); do curl -sf -m5 -o /dev/null localhost:8041/health && exit 0; sleep 10; done; exit 1
+    down: cd ~/deploy/AiStack && make down-vl
+    detect: '[ "$(docker inspect -f {{.State.Running}} vl 2>/dev/null)" = true ]'
+    mem_gib: 20
+    max_jobs: 2
+  asr:  # Whisper large-v3-turbo (util 0.05 ≈ 6 GiB), LiteLLM alias `asr`, /v1/audio/transcriptions — AlienMatch check-in
+    profiles: [comfy, llm, gemma]
+    up: cd ~/deploy/AiStack && make up-asr && for i in $(seq 60); do curl -sf -m5 -o /dev/null localhost:8042/health && exit 0; sleep 10; done; exit 1
+    down: cd ~/deploy/AiStack && make down-asr
+    detect: '[ "$(docker inspect -f {{.State.Running}} asr 2>/dev/null)" = true ]'
+    mem_gib: 6
+    max_jobs: 4
 
 # Strop priority, který si projekt smí dát sám (víc = dotaz na uživatele).
 # 0 = backlog, 90 PromoClown, 100 = okno uživatele (on_behalf_of_user).
@@ -74,6 +88,7 @@ projects:
   webtoon: {max: 30}
   kirian: {max: 30}
   chrestys: {max: 30}
+  alienmatch: {max: 30}
   aiswarmbattle: {max: 20}
   promoclown: {max: 90}
 default_project_max: 20

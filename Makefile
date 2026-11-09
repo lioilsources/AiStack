@@ -7,6 +7,7 @@ COMPOSE_SWARM := docker compose -f deploy/docker-compose.swarm.yaml --env-file .
 COMPOSE_TUNE      := docker compose -f deploy/docker-compose.tune-image.yaml --env-file .env
 COMPOSE_TRANSLATE := docker compose -f deploy/docker-compose.translate.yaml --env-file .env
 COMPOSE_VL := docker compose -f deploy/docker-compose.vl.yaml --env-file .env
+COMPOSE_ASR := docker compose -f deploy/docker-compose.asr.yaml --env-file .env
 COMPOSE_AUDIO     := docker compose -f deploy/docker-compose.audio.yaml --env-file .env
 COMPOSE_AGENT     := docker compose -f deploy/docker-compose.agent.yaml --env-file .env
 
@@ -17,9 +18,9 @@ COMPOSE_AGENT     := docker compose -f deploy/docker-compose.agent.yaml --env-fi
         up-swarm down-swarm up-swarm-director up-director-night down-swarm-director \
         up-tune-image down-tune-image \
         up-dev down-dev logs-dev \
-        up-vl down-vl \
+        up-vl down-vl up-asr down-asr \
         up-image-schnell up-image-kontext up-image-dev down-image-nim logs-kontext \
-        download-flux download-flux-lora download-qwen-vl \
+        download-flux download-flux-lora download-qwen-vl download-whisper \
         download-nemotron download-nemotron-coder download-ocr-models \
         download-scout \
         up-audio up-audio-music up-audio-sfx down-audio logs-audio \
@@ -137,6 +138,14 @@ up-vl:
 
 down-vl:
 	$(COMPOSE_VL) down
+
+## ASR (Whisper large-v3-turbo, ~6 GiB) — AlienMatch check-in, alias `asr`
+up-asr:
+	scripts/mem-admit.sh asr 0.05
+	$(COMPOSE_ASR) up -d
+
+down-asr:
+	$(COMPOSE_ASR) down
 
 down-llm:
 	$(COMPOSE_LLM) down
@@ -258,6 +267,9 @@ download-flux-lora:
 
 download-qwen-vl:
 	env $$(grep -v '^#' .env | xargs) bash scripts/download_qwen_vl.sh
+
+download-whisper:
+	env $$(grep -v '^#' .env | xargs) bash scripts/download_whisper.sh
 
 download-ocr-models:
 	env $$(grep -v '^#' .env | xargs) bash scripts/download_ocr_models.sh

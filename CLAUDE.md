@@ -190,6 +190,8 @@ odmítne start, dokud běží `rag-schedule.timer`. Detaily: `services/spark-bro
 | 8020 | tune-builder | vLLM |
 | 8021 | tune-validator | NIM |
 | 8040 | qwen36-agent | vLLM, rezidentní — OpenClaw přes LiteLLM `openclaw-default` |
+| 8041 | vl | vLLM Qwen2.5-VL-7B, 127.0.0.1, on-demand (`make up-vl`, broker doplněk `vl`), LiteLLM `vl` |
+| 8042 | asr | vLLM Whisper large-v3-turbo, 127.0.0.1, on-demand (`make up-asr`, broker doplněk `asr`), LiteLLM `asr` |
 | 4000 | litellm | hlavní gateway |
 | 4001 | swarm-litellm | SwarmBattle gateway |
 | 8080 | gateway | `0.0.0.0`, veřejný přes Cloudflare |
