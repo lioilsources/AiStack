@@ -23,7 +23,13 @@ Stav 2026-10-02 (časy doplněné z běhu MemeShorts G0 téhož dne). Pro sessio
 - **upscale**: 4x-UltraSharp
 - **video**: Wan 2.2 (ti2v 5B ~25 min / 121 snímků; i2v, t2v, VACE, control 14B), LTX 2.3, AnimateDiff, frame interpolation
 - **3D**: Trellis2, Hunyuan3D; **audio v ComfyUI**: MMAudio
-- **Qwen-Image není.** Bezešvé dlaždicování (tileable) nemá vlastní node — neověřeno; obejít offsetem o půl
+- **Qwen-Image** (od 2026-11-10, Apache 2.0, `Comfy-Org/Qwen-Image_ComfyUI`): `qwen_image_fp8_e4m3fn`
+  (`diffusion_models/`) + `qwen_2.5_vl_7b_fp8_scaled` (`text_encoders/`, CLIPLoader typ `qwen_image`) +
+  `qwen_image_vae`; ModelSamplingAuraFlow shift 3.1, 1328², 20 kroků, cfg 2.5, euler/simple, čte i negativ.
+  Jen txt2img, edit verze (Qwen-Image-Edit) tu není. Na SPARKu 131–167 s na obrázek; s Illustrious vedle
+  v ComfyUI ubral 16 GiB volné paměti (47 → 31), profil `comfy` ho unese. Hotový graf:
+  Ol1nLLM `assets/comfyui/qwen_image_txt2img.api.json`.
+- Bezešvé dlaždicování (tileable) nemá vlastní node — neověřeno; obejít offsetem o půl
   dlaždice + inpaint švu (flux Fill nebo inpaint nodes).
 
 ## 3. Jak zadat job (sám, přes HTTP)
