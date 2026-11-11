@@ -601,10 +601,18 @@ func (b *Broker) schedule(now time.Time) {
 	// Higher jobs that cannot start now; lower jobs must not delay them (backfill.go).
 	var resv []reservation
 	planned := map[string]*Job{} // short job id → long job it goes ahead of (rule 2)
+	yieldTo := map[string]bool{} // short job a drained long job waits for (rule 3)
 	q := b.queue()
 	for idx, j := range q {
 		st := j.Stage()
 		target, _ := b.cat.Target(b.st.Profile, st.Services)
+		if s := b.yielding(j, now); s != nil {
+			j.Waiting = fmt.Sprintf("pustila napřed krátkou %s (%s), pokračuje nejpozději v %s", s.ID, s.Project, clock(*j.YieldUntil, now))
+			at := *j.YieldUntil
+			resv = append(resv, reservation{job: j, at: &at, target: target})
+			yieldTo[s.ID], blockedHigher = true, true
+			continue
+		}
 		if j.NotBefore != nil && now.Before(*j.NotBefore) {
 			j.Waiting = "naplánovaná na " + clock(*j.NotBefore, now)
 			at := *j.NotBefore
@@ -667,7 +675,7 @@ func (b *Broker) schedule(now time.Time) {
 			}
 			continue
 		}
-		if blockedHigher {
+		if blockedHigher && !yieldTo[j.ID] {
 			j.Waiting = fmt.Sprintf("potřebuje profil %s; před ní čeká úloha s vyšší prioritou", target)
 			continue
 		}
@@ -678,7 +686,7 @@ func (b *Broker) schedule(now time.Time) {
 			continue
 		}
 		// Přepnout jde, jen když všechno, co běží, má nižší prioritu a dá se odsunout.
-		var active, ahead []*Job
+		var active, ahead, yields []*Job
 		blocker := ""
 		var blockEnd *time.Time
 		endKnown := true
@@ -691,7 +699,12 @@ func (b *Broker) schedule(now time.Time) {
 				continue
 			}
 			active = append(active, a)
-			if b.blocks(a, j, target, now) {
+			if !b.blocks(a, j, target, now) {
+				continue
+			}
+			if b.mayPreempt(a, j, target, now) {
+				yields = append(yields, a)
+			} else {
 				blocker = fmt.Sprintf("%s (%s, priorita %d", a.ID, a.Project, a.Priority)
 				if a.LeaseUntil != nil {
 					blocker += ", do " + a.LeaseUntil.Format("15:04")
@@ -719,6 +732,11 @@ func (b *Broker) schedule(now time.Time) {
 			continue
 		}
 		if len(ahead) == 0 {
+			for _, a := range yields {
+				b.yieldTo(a, j, target, now)
+			}
+		}
+		if len(ahead) == 0 && len(yields) == 0 {
 			if g, p, mins := b.shortFirst(j, target, active, q, idx, resv, now); g != nil {
 				b.letAhead(g, j, mins, true, now)
 				ahead = append(ahead, g)
@@ -797,6 +815,8 @@ func (b *Broker) start(j *Job, now time.Time) {
 	j.State = Running
 	j.Waiting = ""
 	j.BackfillFor, j.BackfillUntil = "", nil
+	j.YieldFor, j.YieldUntil = "", nil
+	b.yieldStarted(j, now)
 	j.Position = 0
 	j.Profile = b.st.Profile
 	j.StageStarted = &now

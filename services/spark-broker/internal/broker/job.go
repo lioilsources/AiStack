@@ -99,7 +99,11 @@ type Job struct {
 	BackfillUntil *time.Time `json:"backfill_until,omitempty"`
 	// Minutes this job has already waited for short jobs let ahead of it (capped).
 	BackfillDelayMin int `json:"backfill_delay_min,omitempty"`
-	Position         int `json:"position,omitempty"`
+	// Rule 3: this job was drained to let short job YieldFor run first; it waits for
+	// it until YieldUntil, then normal rules apply again.
+	YieldFor   string     `json:"yield_for,omitempty"`
+	YieldUntil *time.Time `json:"yield_until,omitempty"`
+	Position   int        `json:"position,omitempty"`
 }
 
 func (j *Job) Stage() *Stage {

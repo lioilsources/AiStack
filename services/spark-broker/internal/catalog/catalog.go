@@ -74,7 +74,7 @@ type Catalog struct {
 // switch the profile. Classic backfill (a lower job that ends before the blocked
 // head could start anyway) delays nobody and is always on.
 type Backfill struct {
-	Off         bool `yaml:"off"`           // disable short-first
+	Off         bool `yaml:"off"`           // disable short-first and preempting (rules 2, 3)
 	ShortMaxMin int  `yaml:"short_max_min"` // the short job takes at most this many minutes (default 60)
 	ShortMaxPct int  `yaml:"short_max_pct"` // ... and at most this share of the long job's duration (default 15 %)
 	MaxDelayMin int  `yaml:"max_delay_min"` // total delay one long job ever accepts (default 60)

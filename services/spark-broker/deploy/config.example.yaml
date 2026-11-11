@@ -108,7 +108,8 @@ notify_cmd: ~/deploy/WorldLibraryProject/deploy/spark/notify.sh
 log_dir: ~/spark-broker/logs
 
 # Krátká úloha před dlouhou (README „Backfill“). Výchozí hodnoty; off: true vypne
-# jen pravidlo „krátká napřed“ — klasický backfill nikoho nezdrží a běží vždy.
+# pravidla „krátká napřed“ a „krátká odsune běžící dlouhou“ — klasický backfill
+# nikoho nezdrží a běží vždy.
 backfill:
   short_max_min: 60   # krátká úloha trvá nejvýš 60 min…
   short_max_pct: 15   # …a nejvýš 15 % zbývající délky dlouhé úlohy

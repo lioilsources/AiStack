@@ -202,3 +202,113 @@ func TestClassicBackfillBeforeDependency(t *testing.T) {
 	e.want(lj.ID, Queued)
 	e.want(sj.ID, Running)
 }
+
+func longRun(project string, prio, est int, profile string) SubmitReq {
+	return SubmitReq{Project: project, Title: project + " dávka", Priority: prio, Resume: true,
+		Stages: []Stage{{Services: []string{profile}, Mode: ModeRun, Command: "batch " + project, EstimateMin: est}}}
+}
+
+// exitDrained ends the drained process like SIGTERM would and waits until it is queued.
+func (e *env) exitDrained(id string, n int) {
+	e.t.Helper()
+	e.ex.procs[n].ch <- 143
+	waitFor(e.t, func() bool { return e.state(id).State == Queued })
+}
+
+// Owner's case 3: a running resumable 8 h job is drained for a 35 min job on another
+// profile, waits for it and then continues.
+func TestShortJobPreemptsRunningLongJob(t *testing.T) {
+	e := newEnv(t, true, "gptoss")
+	long := e.submit(longRun("storyteller", 30, 480, "gptoss"))
+	e.tick()
+	e.want(long.ID, Running)
+	e.step(60 * time.Minute)
+	short := e.submit(leaseFor("webtoon", 20, 35, "director"))
+	e.tick()
+	e.want(long.ID, Draining)
+	if j := e.state(long.ID); j.YieldFor != short.ID {
+		t.Fatalf("yield_for = %q", j.YieldFor)
+	}
+	e.exitDrained(long.ID, 0)
+	e.tick() // switch to director
+	e.tick()
+	e.want(short.ID, Running)
+	e.want(long.ID, Queued)
+	if got := e.state(long.ID).Waiting; !strings.Contains(got, "pustila napřed krátkou "+short.ID) {
+		t.Fatalf("waiting = %q", got)
+	}
+	e.step(30*time.Minute, short.ID)
+	e.want(short.ID, Running) // the long job does not drain it back
+	e.step(10*time.Minute, short.ID)
+	e.want(short.ID, Done)
+	e.tick()
+	e.tick()
+	e.want(long.ID, Running)
+	if got := e.state(long.ID).BackfillDelayMin; got != 55 { // 35 + 2 × 10 switch
+		t.Fatalf("zdržení %d, čekal 55", got)
+	}
+}
+
+// An endless filler (no estimate) yields to any short job, without the share/delay cap.
+func TestEndlessFillerYields(t *testing.T) {
+	e := newEnv(t, true, "gptoss")
+	filler := e.submit(longRun("library", 30, 0, "gptoss"))
+	e.tick()
+	e.want(filler.ID, Running)
+	short := e.submit(leaseFor("webtoon", 20, 60, "director"))
+	e.tick()
+	e.want(filler.ID, Draining)
+	e.exitDrained(filler.ID, 0)
+	e.tick()
+	e.tick()
+	e.want(short.ID, Running)
+}
+
+// Not for a long job without resume, not for a short job that is too long or unbounded.
+func TestPreemptLimits(t *testing.T) {
+	for name, c := range map[string]struct {
+		resume bool
+		short  int
+	}{
+		"bez resume": {false, 35},
+		"strop":      {true, 61},
+		"neznámo":    {true, 0},
+	} {
+		t.Run(name, func(t *testing.T) {
+			e := newEnv(t, true, "gptoss")
+			lr := longRun("storyteller", 30, 480, "gptoss")
+			lr.Resume = c.resume
+			if !c.resume {
+				lr.Preemptible = new(bool)
+			}
+			long := e.submit(lr)
+			e.tick()
+			sr := leaseFor("webtoon", 20, c.short, "director")
+			if c.short == 0 {
+				sr.UntilIdle = true
+			}
+			short := e.submit(sr)
+			e.tick()
+			e.want(long.ID, Running)
+			e.want(short.ID, Queued)
+		})
+	}
+}
+
+// A short job that overruns its promise is drained by the job it went ahead of.
+func TestPreemptingShortOverrunIsDrained(t *testing.T) {
+	e := newEnv(t, true, "gptoss")
+	long := e.submit(longRun("storyteller", 30, 480, "gptoss"))
+	e.tick()
+	short := e.submit(SubmitReq{Project: "library", Priority: 10, Resume: true,
+		Stages: []Stage{{Services: []string{"director"}, Mode: ModeRun, Command: "enrich", EstimateMin: 30}}})
+	e.tick()
+	e.exitDrained(long.ID, 0)
+	e.tick()
+	e.tick()
+	e.want(short.ID, Running)
+	e.step(25 * time.Minute)
+	e.want(short.ID, Running)
+	e.step(10 * time.Minute)
+	e.want(short.ID, Draining)
+}

@@ -125,8 +125,8 @@ zůstává — broker ho volá jako provisioner profilů.
 ## Backfill — krátká úloha před dlouhou
 
 Zadání (11. 11. 2026): „když chce úloha běžet jen 35 minut a před ní je 8h úloha s vyšší
-prioritou, předřaď kratší úlohu.“ Obě pravidla platí jen pro úlohy, které jedou na
-**aktuálním profilu** (nic se kvůli nim nepřepíná). Délka úlohy je to, co deklaruje:
+prioritou, předřaď kratší úlohu.“ Pravidla 1 a 2 platí jen pro úlohy, které jedou na
+**aktuálním profilu** (nic se kvůli nim nepřepíná), pravidlo 3 přepíná. Délka úlohy je to, co deklaruje:
 lease = minuty lease (`sparkctl lease … <minuty>`, `exec`), run = `estimate_min`.
 Úloha bez známé délky (`until_idle`, run bez odhadu) se nepředřazuje nikdy.
 
@@ -155,8 +155,19 @@ lease = minuty lease (`sparkctl lease … <minuty>`, `exec`), run = `estimate_mi
    dlouhá úloha tak nemůže vyhladovět. Prodloužit lease krátké úlohy nejde, dokud čeká
    vyšší úloha na jiný profil (platilo už dřív).
 
+3. **Krátká odsune běžící dlouhou.** Doplněk z 11. 11.: „běžící úloha se nepřerušuje,
+   krátká počká, až doběhne — když běží nekonečná výplň, úloha se nikdy nedostane ke
+   slovu.“ Krátká úloha, která potřebuje jiný profil, smí odsunout běžící úlohu
+   s vyšší nebo stejnou prioritou, když ta umí navázat (`preemptible` + `resume`, tedy
+   run nebo `sparkctl exec`; ne okno uživatele, `recurring` ani akce na čas). Limity
+   jako u pravidla 2, do zdržení se počítají obě přepnutí profilu (35 min + 2 × 10 =
+   55 min). Úloha bez známého konce (výplň bez `estimate_min`) ustoupí vždy, bez limitu
+   podílu a zdržení. Odsunutá úloha čeká (`yield_for`, `yield_until`) do slíbeného
+   konce krátké, pak se vrátí; přetáhne-li krátká slib, odsune ji. Lease bez resume
+   (okna, tribute) dál chrání priorita.
+
 Nastavení v `config.yaml`, sekce `backfill` (`short_max_min`, `short_max_pct`,
-`max_delay_min`, `off: true` vypne jen pravidlo 2). Čte se při startu brokera.
+`max_delay_min`, `off: true` vypne pravidla 2 a 3). Čte se při startu brokera.
 
 ## Akce na čas (`not_before`, `sparkctl --at`)
 

@@ -24,6 +24,14 @@ import (
 //     ≤ max_delay_min and no queued deadline would be missed. Never for user
 //     windows, recurring windows or due --at actions. After the promised end the
 //     short job is drained like any other, so the long job cannot starve.
+//  3. Short job preempts a running long one (owner, 11. 11.: "a running job is not
+//     interrupted, the short one waits for it; with an endless filler it never gets
+//     a turn"). A short job that needs another profile may drain a running job of a
+//     higher or equal priority when that job can resume (preemptible + resume, not a
+//     user window, not recurring, not a due --at action). Same limits as rule 2,
+//     counting both profile switches; a job without a known end (endless filler) has
+//     no share or delay cap. The drained job waits for the short one until its
+//     promised end (yield_for / yield_until), then drains it if it overruns.
 
 // reservation: a higher job that cannot start now and must not be delayed further.
 type reservation struct {
@@ -97,6 +105,9 @@ func jobEnd(a *Job) *time.Time {
 
 // blocks: would job a, if it were running at time at, keep h from starting?
 func (b *Broker) blocks(a, h *Job, target string, at time.Time) bool {
+	if a.YieldFor == h.ID {
+		return false // a is being drained for h (rule 3)
+	}
 	if target != b.st.Profile {
 		// h switches the profile: everything running must be drainable by h.
 		return !a.Preemptible || (a.Priority >= h.Priority && !preemptsLong(h, a, at)) || preemptsLong(a, h, at)
@@ -256,4 +267,101 @@ func idsOf(js []*Job) string {
 		ids[i] = j.ID
 	}
 	return strings.Join(ids, ", ")
+}
+
+// switchMin: minutes a switch to profile p takes (catalog switch_min, default 10).
+func (b *Broker) switchMin(p string) int {
+	if sw := b.cat.Profiles[p].SwitchMin; sw > 0 {
+		return sw
+	}
+	return 10
+}
+
+// fullMinutes: declared duration of all remaining stages, 0 if any is unknown.
+func fullMinutes(j *Job) int {
+	n := 0
+	for i := j.StageIdx; i < len(j.Stages); i++ {
+		m := minutesOf(j, &j.Stages[i])
+		if m == 0 {
+			return 0
+		}
+		n += m
+	}
+	return n
+}
+
+// activeLeft: minutes active job a still needs (current stage to its end plus the
+// stages after it), 0 = unknown/unbounded.
+func activeLeft(a *Job, now time.Time) int {
+	end := jobEnd(a)
+	if end == nil {
+		return 0
+	}
+	n := int((end.Sub(now) + time.Minute - 1) / time.Minute)
+	for i := a.StageIdx + 1; i < len(a.Stages); i++ {
+		m := minutesOf(a, &a.Stages[i])
+		if m == 0 {
+			return 0
+		}
+		n += m
+	}
+	return n
+}
+
+// mayPreempt: rule 3 — may short job h (needing profile target) drain running job a?
+func (b *Broker) mayPreempt(a, h *Job, target string, now time.Time) bool {
+	cfg := b.cat.Backfill
+	if cfg.Off || a.State != Running || !a.Preemptible || !a.Resume || a.OnBehalfOfUser ||
+		a.Recurring != "" || a.NotBefore != nil || a.BackfillFor != "" || h.due(now) {
+		return false
+	}
+	mins := fullMinutes(h)
+	if mins <= 0 || mins > cfg.ShortMaxMin {
+		return false
+	}
+	left := activeLeft(a, now)
+	if left == 0 {
+		return true // endless filler: always yields to a short job
+	}
+	cost := mins + b.switchMin(target) + b.switchMin(b.st.Profile)
+	return mins*100 <= cfg.ShortMaxPct*left && a.BackfillDelayMin+cost <= cfg.MaxDelayMin
+}
+
+// yieldTo drains a so that short job h can run first; a waits for h (rule 3).
+func (b *Broker) yieldTo(a, h *Job, target string, now time.Time) {
+	if a.YieldFor == h.ID {
+		return
+	}
+	mins := fullMinutes(h)
+	// Until h starts: drain + switch + its run; the promise is reset when it starts.
+	t := now.Add(2*b.opt.DrainGrace + time.Duration(b.switchMin(target)+mins)*time.Minute)
+	a.YieldFor, a.YieldUntil = h.ID, &t
+	if activeLeft(a, now) > 0 {
+		a.BackfillDelayMin += mins + b.switchMin(target) + b.switchMin(b.st.Profile)
+	}
+	a.event(now, "pouští napřed krátkou %s (%s, %d min), pak naváže; zdržení celkem %d min", h.ID, h.Project, mins, a.BackfillDelayMin)
+	h.event(now, "krátká úloha: odsouvám %s (%s, priorita %d), vrátí se po mně", a.ID, a.Project, a.Priority)
+}
+
+// yieldStarted: short job s starts, the jobs waiting for it get its real end.
+func (b *Broker) yieldStarted(s *Job, now time.Time) {
+	for _, a := range b.st.Jobs {
+		if a.YieldFor == s.ID && !a.Final() {
+			t := now.Add(time.Duration(fullMinutes(s))*time.Minute + promiseGrace)
+			a.YieldUntil = &t
+		}
+	}
+}
+
+// yielding: the short job j still waits for (rule 3), nil = none (and clears it).
+func (b *Broker) yielding(j *Job, now time.Time) *Job {
+	if j.YieldFor == "" {
+		return nil
+	}
+	if s := b.find(j.YieldFor); s != nil && !s.Final() && j.YieldUntil != nil && !now.After(*j.YieldUntil) {
+		return s
+	}
+	j.event(now, "krátká %s skončila nebo přetáhla, pokračuje", j.YieldFor)
+	j.YieldFor, j.YieldUntil = "", nil
+	return nil
 }
