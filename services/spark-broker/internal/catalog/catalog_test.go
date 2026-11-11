@@ -27,6 +27,9 @@ func TestExampleConfig(t *testing.T) {
 			t.Errorf("%s → %q, čekal %q", svcs, got, want)
 		}
 	}
+	if bf := c.Backfill; bf.ShortMaxMin != 60 || bf.ShortMaxPct != 15 || bf.MaxDelayMin != 60 || bf.Off {
+		t.Errorf("backfill %+v", bf)
+	}
 	if got, _ := c.Target("llm", []string{"flux-schnell"}); got != "llm" {
 		t.Errorf("flux v llm se nemá přepínat, dostal %s", got)
 	}

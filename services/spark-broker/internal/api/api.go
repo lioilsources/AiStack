@@ -4,6 +4,7 @@ package api
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"strconv"
 
@@ -111,6 +112,8 @@ func (a *API) catalog(w http.ResponseWriter, r *http.Request) {
 		"Lease: posílej POST /v1/jobs/{id}/heartbeat aspoň každých 5 min a na konci POST /v1/jobs/{id}/done s metrikami.",
 		"Run: poslední řádek výstupu může být JSON {\"images\":{\"ok\":N,\"failed\":M}} — jde do souhrnu.",
 		"Nikdy nespouštěj ani nezastavuj kontejnery a systemd služby na SPARKu sám.",
+		fmt.Sprintf("Backfill: krátká úloha (≤ %d min a ≤ %d %% delší) smí jít před delší úlohu s vyšší prioritou, zdržení jedné úlohy celkem ≤ %d min; deklaruj délku (lease minuty, estimate_min).",
+			a.Cat.Backfill.ShortMaxMin, a.Cat.Backfill.ShortMaxPct, a.Cat.Backfill.MaxDelayMin),
 	}
 	write(w, 200, out)
 }

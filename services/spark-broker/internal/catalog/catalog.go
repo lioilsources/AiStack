@@ -66,6 +66,18 @@ type Catalog struct {
 	TempPauseC    int                `yaml:"temp_pause_c"`
 	NotifyCmd     string             `yaml:"notify_cmd"`
 	LogDir        string             `yaml:"log_dir"`
+	Backfill      Backfill           `yaml:"backfill"`
+}
+
+// Backfill tunes the "short job first" rule: a short lower-priority job that can
+// start right now may go ahead of a long higher-priority job that would otherwise
+// switch the profile. Classic backfill (a lower job that ends before the blocked
+// head could start anyway) delays nobody and is always on.
+type Backfill struct {
+	Off         bool `yaml:"off"`           // disable short-first
+	ShortMaxMin int  `yaml:"short_max_min"` // the short job takes at most this many minutes (default 60)
+	ShortMaxPct int  `yaml:"short_max_pct"` // ... and at most this share of the long job's duration (default 15 %)
+	MaxDelayMin int  `yaml:"max_delay_min"` // total delay one long job ever accepts (default 60)
 }
 
 type Duration struct{ time.Duration }
@@ -100,6 +112,15 @@ func Parse(b []byte) (*Catalog, error) {
 	}
 	if c.TempPauseC == 0 {
 		c.TempPauseC = 87
+	}
+	if c.Backfill.ShortMaxMin == 0 {
+		c.Backfill.ShortMaxMin = 60
+	}
+	if c.Backfill.ShortMaxPct == 0 {
+		c.Backfill.ShortMaxPct = 15
+	}
+	if c.Backfill.MaxDelayMin == 0 {
+		c.Backfill.MaxDelayMin = 60
 	}
 	if len(c.ProfileOrder) == 0 {
 		for n := range c.Profiles {

@@ -598,21 +598,40 @@ func (b *Broker) schedule(now time.Time) {
 	b.hotSince, b.hotWarned = nil, false
 
 	blockedHigher := false // vyšší úloha čeká na přepnutí — dál smí jen to, co jde kdykoli odsunout
-	for _, j := range b.queue() {
+	// Higher jobs that cannot start now; lower jobs must not delay them (backfill.go).
+	var resv []reservation
+	planned := map[string]*Job{} // short job id → long job it goes ahead of (rule 2)
+	q := b.queue()
+	for idx, j := range q {
+		st := j.Stage()
+		target, _ := b.cat.Target(b.st.Profile, st.Services)
 		if j.NotBefore != nil && now.Before(*j.NotBefore) {
 			j.Waiting = "naplánovaná na " + clock(*j.NotBefore, now)
+			at := *j.NotBefore
+			resv = append(resv, reservation{job: j, at: &at, target: target})
 			continue
 		}
 		if dep := b.pendingDep(j); dep != nil {
 			j.Waiting = fmt.Sprintf("po %s (%s: %s)", dep.ID, dep.Project, dep.Title)
+			// Predictable start only while the dependency runs with a known end;
+			// otherwise lower jobs run freely as before.
+			if dep.Active() {
+				if end := jobEnd(dep); end != nil {
+					resv = append(resv, reservation{job: j, at: end, target: target})
+				}
+			}
 			continue
 		}
-		st := j.Stage()
-		target, _ := b.cat.Target(b.st.Profile, st.Services)
 		if target == b.st.Profile && b.st.Profile != "" {
-			if blockedHigher && !j.Preemptible {
-				j.Waiting = "čeká, až se uvolní SPARK pro úlohu s vyšší prioritou"
-				continue
+			long := planned[j.ID]
+			var fitFor *reservation
+			if long == nil {
+				var deny *reservation
+				fitFor, deny = b.checkResv(j, resv, now)
+				if deny != nil {
+					j.Waiting = resvWaiting(deny, now)
+					continue
+				}
 			}
 			addons, _ := b.cat.Fits(target, st.Services)
 			if why := b.addonsBusy(addons); why != "" {
@@ -638,6 +657,14 @@ func (b *Broker) schedule(now time.Time) {
 				continue
 			}
 			b.start(j, now)
+			if j.Active() {
+				switch {
+				case long != nil:
+					b.letAhead(j, long, stageMinutes(j), true, now)
+				case fitFor != nil:
+					b.letAhead(j, fitFor.job, stageMinutes(j), false, now)
+				}
+			}
 			continue
 		}
 		if blockedHigher {
@@ -647,26 +674,70 @@ func (b *Broker) schedule(now time.Time) {
 		blockedHigher = true
 		if !b.opt.Control {
 			j.Waiting = fmt.Sprintf("advise: potřebuje profil %s, teď běží %s", target, orDash(b.st.Profile))
+			resv = append(resv, reservation{job: j, target: target})
 			continue
 		}
 		// Přepnout jde, jen když všechno, co běží, má nižší prioritu a dá se odsunout.
-		var active []*Job
+		var active, ahead []*Job
 		blocker := ""
+		var blockEnd *time.Time
+		endKnown := true
 		for _, a := range b.st.Jobs {
 			if !a.Active() {
 				continue
 			}
+			if promised(a, j, now) {
+				ahead = append(ahead, a) // let ahead of j, still within its promise
+				continue
+			}
 			active = append(active, a)
-			if !a.Preemptible || (a.Priority >= j.Priority && !preemptsLong(j, a, now)) || preemptsLong(a, j, now) {
+			if b.blocks(a, j, target, now) {
 				blocker = fmt.Sprintf("%s (%s, priorita %d", a.ID, a.Project, a.Priority)
 				if a.LeaseUntil != nil {
 					blocker += ", do " + a.LeaseUntil.Format("15:04")
 				}
 				blocker += ")"
+				if e := jobEnd(a); e == nil {
+					endKnown = false
+				} else if blockEnd == nil || e.After(*blockEnd) {
+					blockEnd = e
+				}
 			}
 		}
 		if blocker != "" {
 			j.Waiting = fmt.Sprintf("potřebuje profil %s, běží %s", target, blocker)
+			r := reservation{job: j, target: target}
+			if endKnown && blockEnd != nil {
+				for _, a := range ahead {
+					if a.BackfillUntil.After(*blockEnd) {
+						blockEnd = a.BackfillUntil
+					}
+				}
+				r.at = blockEnd
+			}
+			resv = append(resv, r)
+			continue
+		}
+		if len(ahead) == 0 {
+			if g, p, mins := b.shortFirst(j, target, active, q, idx, resv, now); g != nil {
+				b.letAhead(g, j, mins, true, now)
+				ahead = append(ahead, g)
+			} else if p != nil {
+				planned[p.ID] = j
+				t := now.Add(time.Duration(mins) * time.Minute)
+				p.BackfillUntil = &t // provisional, set again when it starts
+				ahead = append(ahead, p)
+			}
+		}
+		if len(ahead) > 0 {
+			var at *time.Time
+			for _, a := range ahead {
+				if at == nil || a.BackfillUntil.After(*at) {
+					at = a.BackfillUntil
+				}
+			}
+			j.Waiting = fmt.Sprintf("napřed krátká úloha %s (do %s), pak přepnu na %s", idsOf(ahead), clock(*at, now), target)
+			resv = append(resv, reservation{job: j, at: at, target: target})
 			continue
 		}
 		if len(active) > 0 {
@@ -674,6 +745,7 @@ func (b *Broker) schedule(now time.Time) {
 				b.drain(a, now, fmt.Sprintf("SPARK potřebuje %s (%s, priorita %d)", j.ID, j.Project, j.Priority))
 			}
 			j.Waiting = fmt.Sprintf("odsouvám %d úloh(y), pak přepnu na %s", len(active), target)
+			resv = append(resv, reservation{job: j, target: target})
 			continue
 		}
 		j.Waiting = "přepínám na " + target
@@ -724,6 +796,7 @@ func (b *Broker) start(j *Job, now time.Time) {
 	st := j.Stage()
 	j.State = Running
 	j.Waiting = ""
+	j.BackfillFor, j.BackfillUntil = "", nil
 	j.Position = 0
 	j.Profile = b.st.Profile
 	j.StageStarted = &now
@@ -732,14 +805,7 @@ func (b *Broker) start(j *Job, now time.Time) {
 	}
 	j.LastHeartbeat, j.LastActivity, j.IdleWarned, j.DrainAt = &now, &now, false, nil
 	if st.Mode == ModeLease {
-		mins := st.LeaseMin
-		if mins == 0 {
-			mins = st.EstimateMin * 3 / 2
-		}
-		if mins < 15 {
-			mins = 60
-		}
-		t := now.Add(time.Duration(mins) * time.Minute)
+		t := now.Add(time.Duration(leaseMinutes(st)) * time.Minute)
 		if j.Recurring == "" || j.LeaseUntil == nil {
 			j.LeaseUntil = &t
 		}

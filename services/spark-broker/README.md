@@ -35,6 +35,9 @@ fronty, run dostane SIGTERM (proto preemptible run musí mít `resume: true`).
 Selhané přepnutí broker **pozastaví** a pošle ❌ — nic dalšího nezkouší, dokud
 uživatel nepustí `POST /v1/resume`. Teplota GPU ≥ 87 °C = nic nového nestartuje.
 
+**Backfill** (krátká úloha napřed, viz níž) smí pustit nižší úlohu před vyšší, jen když
+vyšší úlohu nezdrží, nebo ji zdrží jen málo a s limitem.
+
 **Telegram** (přes `notify.sh`, PromoClown bot): ✅ souhrn po každé úloze s
 metrikami (backlog jednou denně v 07:00), ❌ hned při chybě s tím, co je potřeba
 udělat, ❓ dotaz na prioritu nad strop, 🪟 okno jménem uživatele, 💤 nečinné okno.
@@ -118,6 +121,42 @@ zůstává — broker ho volá jako provisioner profilů.
 - `recurring` je jen přechod pro PromoClown, dokud jeho heartbeat neumí `POST /v1/jobs`
   (od 26. 10. 2026 prázdné). Denně se opakující pevné okno z configu, priorita z configu,
   neodsouvá se; config se čte jen při startu, změna chce restart brokera.
+
+## Backfill — krátká úloha před dlouhou
+
+Zadání (11. 11. 2026): „když chce úloha běžet jen 35 minut a před ní je 8h úloha s vyšší
+prioritou, předřaď kratší úlohu.“ Obě pravidla platí jen pro úlohy, které jedou na
+**aktuálním profilu** (nic se kvůli nim nepřepíná). Délka úlohy je to, co deklaruje:
+lease = minuty lease (`sparkctl lease … <minuty>`, `exec`), run = `estimate_min`.
+Úloha bez známé délky (`until_idle`, run bez odhadu) se nepředřazuje nikdy.
+
+1. **Klasický backfill (nikoho nezdrží, vždy zapnutý).** Vyšší úloha, která zrovna
+   nemůže začít (běží okno uživatele nebo jiná neodsunutelná úloha, čeká na `--after`,
+   má `--at`), si drží rezervaci s odhadem startu: konec blokující úlohy (lease do),
+   konec závislosti, čas `--at`. Nižší úloha, která by jí stála v cestě (neodsunutelná,
+   nebo zabírá omezený doplněk), smí začít, jen když skončí dřív. Neznámý start =
+   překážet nesmí nic (jako dřív). U `--after`, jehož konec neznáme, se nic nemění:
+   nižší úlohy jedou volně jako dřív. Odsunutelné nižší úlohy jedou jako dřív — před
+   startem vyšší se odsunou.
+2. **Krátká napřed (zdrží, ale málo).** Vyšší úloha, která by teď přepnula profil
+   (případně odsunula, co běží), počká na **jednu** krátkou odsunutelnou úlohu na
+   aktuálním profilu (čekající, nebo už běžící — tu pak neodsouvá), když:
+   - krátká trvá ≤ `short_max_min` (60 min) **a** ≤ `short_max_pct` (15 %) zbývající
+     délky dlouhé úlohy (8 h → až 72 min, tedy strop 60; 2 h → 18 min),
+   - dlouhá úloha takhle čekala celkem ≤ `max_delay_min` (60 min) — pak už nečeká nikdy,
+   - žádná čekající úloha s deadline, která potřebuje přepnout, ho nezmešká
+     (teď + krátká + `switch_min` profilu (jinak 10) + její délka ≤ deadline;
+     úloha s deadline bez známé délky = nepředřazovat),
+   - dlouhá úloha není okno uživatele, `recurring`, ani akce na čas, jejíž čas nastal.
+
+   Krátká dostane slib „do HH:MM“ (`backfill_for`, `backfill_until` v úloze), dlouhá
+   v `waiting` ukazuje „napřed krátká úloha …“ a v `backfill_delay_min` své zdržení.
+   Když krátká slib přetáhne (o víc než minutu), odsune se jako každá jiná —
+   dlouhá úloha tak nemůže vyhladovět. Prodloužit lease krátké úlohy nejde, dokud čeká
+   vyšší úloha na jiný profil (platilo už dřív).
+
+Nastavení v `config.yaml`, sekce `backfill` (`short_max_min`, `short_max_pct`,
+`max_delay_min`, `off: true` vypne jen pravidlo 2). Čte se při startu brokera.
 
 ## Akce na čas (`not_before`, `sparkctl --at`)
 

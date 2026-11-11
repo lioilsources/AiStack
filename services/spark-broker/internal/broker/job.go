@@ -93,7 +93,13 @@ type Job struct {
 	Events        []Event          `json:"events,omitempty"`
 	Attempts      int              `json:"attempts,omitempty"`
 	Waiting       string           `json:"waiting,omitempty"` // proč ještě neběží (plní plánovač)
-	Position      int              `json:"position,omitempty"`
+	// Backfill: this run of the current stage was let ahead of BackfillFor (a higher
+	// job) on the promise to end by BackfillUntil. After that, normal rules apply.
+	BackfillFor   string     `json:"backfill_for,omitempty"`
+	BackfillUntil *time.Time `json:"backfill_until,omitempty"`
+	// Minutes this job has already waited for short jobs let ahead of it (capped).
+	BackfillDelayMin int `json:"backfill_delay_min,omitempty"`
+	Position         int `json:"position,omitempty"`
 }
 
 func (j *Job) Stage() *Stage {
