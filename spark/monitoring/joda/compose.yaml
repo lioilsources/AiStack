@@ -8,10 +8,12 @@ services:
     network_mode: host
     pid: host
     mem_limit: 64m
-    # Snap Docker on JODA cannot bind the host "/" (it shows up as an empty tmpfs),
-    # so no --path.rootfs: statfs("/") hits the container overlay, which lives on the
-    # host root fs and reports its numbers; /home and /media bring in the ZFS pools and the data disk.
-    volumes: ["/home:/home:ro", "/media:/media:ro"]
+    # Snap Docker runs in the snap mount namespace, where the host "/" is the snap base image.
+    # The real host root (with all submounts) is at /var/lib/snapd/hostfs there, so bind that
+    # and point --path.rootfs at it. Without it statfs("/") reports the container overlay,
+    # which is wrong as soon as the Docker data root sits on another filesystem.
+    volumes: ["/var/lib/snapd/hostfs:/host:ro"]
     command:
+      - --path.rootfs=/host
       - --web.listen-address=${JODA_LAN_IP:?set JODA_LAN_IP in .env}:9100
       - --collector.filesystem.mount-points-exclude=^/(dev|proc|sys|run|var/lib/docker/.+|snap/.+)($|/)

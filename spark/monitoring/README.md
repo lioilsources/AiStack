@@ -42,8 +42,9 @@ ssh joda 'cd ~/deploy/node-exporter && docker compose up -d'   # .env: JODA_LAN_
 ```
 
 Docker na JODĚ je snap a hostitelský `/` do kontejneru nepřipojí (je z něj prázdný
-tmpfs, `df` by hlásil 2 GB). Proto exporter běží bez `--path.rootfs` a připojuje
-jen `/home` (ZFS pooly) a `/media`.
+tmpfs, `df` by hlásil 2 GB). Skutečný kořen hostitele je ve jmenném prostoru snapu
+na `/var/lib/snapd/hostfs`, proto exporter připojuje ten a běží s `--path.rootfs=/host`.
+Bez toho by `/` hlásil čísla úložiště Dockeru, které na JODĚ leží na ZFS.
 
 ## Úprava dashboardu
 
