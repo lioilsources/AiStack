@@ -1,0 +1,17 @@
+# node_exporter on JODA, scraped by Prometheus on SPARK.
+# Deploy: copy to ~/deploy/node-exporter/ on JODA, create .env with JODA_LAN_IP, `docker compose up -d`.
+name: node-exporter
+services:
+  node-exporter:
+    image: prom/node-exporter:v1.12.1
+    restart: unless-stopped
+    network_mode: host
+    pid: host
+    mem_limit: 64m
+    # Snap Docker on JODA cannot bind the host "/" (it shows up as an empty tmpfs),
+    # so no --path.rootfs: statfs("/") hits the container overlay, which lives on the
+    # host root fs and reports its numbers; /home and /media bring in the ZFS pools and the data disk.
+    volumes: ["/home:/home:ro", "/media:/media:ro"]
+    command:
+      - --web.listen-address=${JODA_LAN_IP:?set JODA_LAN_IP in .env}:9100
+      - --collector.filesystem.mount-points-exclude=^/(dev|proc|sys|run|var/lib/docker/.+|snap/.+)($|/)

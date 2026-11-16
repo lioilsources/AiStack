@@ -1,0 +1,27 @@
+[Unit]
+Description=Grafana (SPARK + JODA monitoring)
+After=mon-prometheus.service
+
+[Service]
+EnvironmentFile=@MON@/.env
+Environment=MON_HOME=@MON@
+Environment=GF_PATHS_DATA=@MON@/run/data/grafana
+Environment=GF_PATHS_LOGS=@MON@/run/logs
+Environment=GF_PATHS_PLUGINS=@MON@/run/data/grafana/plugins
+Environment=GF_PATHS_PROVISIONING=@MON@/grafana/provisioning
+Environment=GF_SERVER_HTTP_PORT=3000
+Environment=GF_USERS_ALLOW_SIGN_UP=false
+Environment=GF_AUTH_ANONYMOUS_ENABLED=true
+Environment=GF_AUTH_ANONYMOUS_ORG_ROLE=Viewer
+Environment=GF_ANALYTICS_REPORTING_ENABLED=false
+Environment=GF_ANALYTICS_CHECK_FOR_UPDATES=false
+Environment=GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH=@MON@/grafana/dashboards/hosts.json
+# GF_SECURITY_ADMIN_PASSWORD comes from .env (GRAFANA_ADMIN_PASSWORD), applied on first start only.
+ExecStart=/bin/sh -c 'GF_SECURITY_ADMIN_PASSWORD="$GRAFANA_ADMIN_PASSWORD" exec @MON@/run/grafana/bin/grafana server --homepath @MON@/run/grafana'
+Restart=always
+RestartSec=10
+MemoryHigh=384M
+MemoryMax=512M
+
+[Install]
+WantedBy=default.target

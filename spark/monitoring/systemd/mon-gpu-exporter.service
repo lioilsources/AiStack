@@ -1,0 +1,11 @@
+[Unit]
+Description=nvidia_gpu_exporter (nvidia-smi based; GB10 has no DCGM memory stats)
+
+[Service]
+ExecStart=@MON@/run/gpu-exporter/nvidia_gpu_exporter --web.listen-address=127.0.0.1:9835
+Restart=always
+RestartSec=10
+MemoryMax=128M
+
+[Install]
+WantedBy=default.target

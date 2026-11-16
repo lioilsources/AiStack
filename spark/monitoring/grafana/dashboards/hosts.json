@@ -1,0 +1,1525 @@
+{
+ "uid": "hosts",
+ "title": "SPARK + JODA",
+ "tags": [
+  "infra"
+ ],
+ "timezone": "browser",
+ "refresh": "30s",
+ "time": {
+  "from": "now-6h",
+  "to": "now"
+ },
+ "schemaVersion": 39,
+ "panels": [
+  {
+   "type": "row",
+   "title": "Stav teď",
+   "collapsed": false,
+   "gridPos": {
+    "x": 0,
+    "y": 0,
+    "w": 24,
+    "h": 1
+   }
+  },
+  {
+   "type": "stat",
+   "title": "RAM",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prom"
+   },
+   "gridPos": {
+    "x": 0,
+    "y": 1,
+    "w": 4,
+    "h": 5
+   },
+   "fieldConfig": {
+    "defaults": {
+     "unit": "percent",
+     "min": 0,
+     "max": 100,
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": null
+       },
+       {
+        "color": "yellow",
+        "value": 70
+       },
+       {
+        "color": "red",
+        "value": 90
+       }
+      ]
+     },
+     "color": {
+      "mode": "thresholds"
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom"
+    },
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ]
+    },
+    "textMode": "value_and_name"
+   },
+   "targets": [
+    {
+     "expr": "(1 - node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes) * 100",
+     "legendFormat": "{{host}}",
+     "refId": "A",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prom"
+     }
+    }
+   ]
+  },
+  {
+   "type": "stat",
+   "title": "Disky zaplnění",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prom"
+   },
+   "gridPos": {
+    "x": 4,
+    "y": 1,
+    "w": 4,
+    "h": 5
+   },
+   "fieldConfig": {
+    "defaults": {
+     "unit": "percent",
+     "min": 0,
+     "max": 100,
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": null
+       },
+       {
+        "color": "yellow",
+        "value": 70
+       },
+       {
+        "color": "red",
+        "value": 90
+       }
+      ]
+     },
+     "color": {
+      "mode": "thresholds"
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom"
+    },
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ]
+    },
+    "textMode": "value_and_name"
+   },
+   "targets": [
+    {
+     "expr": "(1 - node_filesystem_avail_bytes{fstype=~\"ext4|xfs|btrfs\", mountpoint!~\"/boot.*\"} / node_filesystem_size_bytes{fstype=~\"ext4|xfs|btrfs\", mountpoint!~\"/boot.*\"}) * 100",
+     "legendFormat": "{{host}} {{mountpoint}}",
+     "refId": "A",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prom"
+     }
+    }
+   ]
+  },
+  {
+   "type": "stat",
+   "title": "Swap použitý",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prom"
+   },
+   "gridPos": {
+    "x": 8,
+    "y": 1,
+    "w": 4,
+    "h": 5
+   },
+   "fieldConfig": {
+    "defaults": {
+     "unit": "bytes",
+     "min": 0
+    },
+    "overrides": []
+   },
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom"
+    },
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ]
+    },
+    "textMode": "value_and_name"
+   },
+   "targets": [
+    {
+     "expr": "node_memory_SwapTotal_bytes - node_memory_SwapFree_bytes",
+     "legendFormat": "{{host}}",
+     "refId": "A",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prom"
+     }
+    }
+   ]
+  },
+  {
+   "type": "stat",
+   "title": "CPU",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prom"
+   },
+   "gridPos": {
+    "x": 12,
+    "y": 1,
+    "w": 4,
+    "h": 5
+   },
+   "fieldConfig": {
+    "defaults": {
+     "unit": "percent",
+     "min": 0,
+     "max": 100,
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": null
+       },
+       {
+        "color": "yellow",
+        "value": 70
+       },
+       {
+        "color": "red",
+        "value": 90
+       }
+      ]
+     },
+     "color": {
+      "mode": "thresholds"
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom"
+    },
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ]
+    },
+    "textMode": "value_and_name"
+   },
+   "targets": [
+    {
+     "expr": "100 * (1 - avg by (host) (rate(node_cpu_seconds_total{mode=\"idle\"}[1m])))",
+     "legendFormat": "{{host}}",
+     "refId": "A",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prom"
+     }
+    }
+   ]
+  },
+  {
+   "type": "gauge",
+   "title": "GPU využití",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prom"
+   },
+   "gridPos": {
+    "x": 16,
+    "y": 1,
+    "w": 2,
+    "h": 5
+   },
+   "fieldConfig": {
+    "defaults": {
+     "unit": "percent",
+     "min": 0,
+     "max": 100,
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": null
+       },
+       {
+        "color": "yellow",
+        "value": 70
+       },
+       {
+        "color": "red",
+        "value": 90
+       }
+      ]
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom"
+    },
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ]
+    },
+    "textMode": "value_and_name"
+   },
+   "targets": [
+    {
+     "expr": "nvidia_smi_utilization_gpu_ratio * 100",
+     "legendFormat": "",
+     "refId": "A",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prom"
+     }
+    }
+   ]
+  },
+  {
+   "type": "stat",
+   "title": "GPU teplota",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prom"
+   },
+   "gridPos": {
+    "x": 18,
+    "y": 1,
+    "w": 2,
+    "h": 5
+   },
+   "fieldConfig": {
+    "defaults": {
+     "unit": "celsius",
+     "min": 0,
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": null
+       },
+       {
+        "color": "yellow",
+        "value": 80
+       },
+       {
+        "color": "red",
+        "value": 90
+       }
+      ]
+     },
+     "color": {
+      "mode": "thresholds"
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom"
+    },
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ]
+    },
+    "textMode": "value_and_name"
+   },
+   "targets": [
+    {
+     "expr": "nvidia_smi_temperature_gpu",
+     "legendFormat": "",
+     "refId": "A",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prom"
+     }
+    }
+   ]
+  },
+  {
+   "type": "stat",
+   "title": "GPU příkon",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prom"
+   },
+   "gridPos": {
+    "x": 20,
+    "y": 1,
+    "w": 2,
+    "h": 5
+   },
+   "fieldConfig": {
+    "defaults": {
+     "unit": "watt",
+     "min": 0
+    },
+    "overrides": []
+   },
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom"
+    },
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ]
+    },
+    "textMode": "value_and_name"
+   },
+   "targets": [
+    {
+     "expr": "nvidia_smi_power_draw_watts",
+     "legendFormat": "",
+     "refId": "A",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prom"
+     }
+    }
+   ]
+  },
+  {
+   "type": "stat",
+   "title": "Uptime",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prom"
+   },
+   "gridPos": {
+    "x": 22,
+    "y": 1,
+    "w": 2,
+    "h": 5
+   },
+   "fieldConfig": {
+    "defaults": {
+     "unit": "s",
+     "min": 0
+    },
+    "overrides": []
+   },
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom"
+    },
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ]
+    },
+    "textMode": "value_and_name"
+   },
+   "targets": [
+    {
+     "expr": "time() - node_boot_time_seconds",
+     "legendFormat": "{{host}}",
+     "refId": "A",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prom"
+     }
+    }
+   ]
+  },
+  {
+   "type": "row",
+   "title": "SPARK GPU",
+   "collapsed": false,
+   "gridPos": {
+    "x": 0,
+    "y": 6,
+    "w": 24,
+    "h": 1
+   }
+  },
+  {
+   "type": "timeseries",
+   "title": "GPU využití",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prom"
+   },
+   "gridPos": {
+    "x": 0,
+    "y": 7,
+    "w": 8,
+    "h": 8
+   },
+   "fieldConfig": {
+    "defaults": {
+     "unit": "percent",
+     "min": 0,
+     "max": 100,
+     "custom": {
+      "fillOpacity": 12,
+      "lineWidth": 2,
+      "showPoints": "never"
+     }
+    },
+    "overrides": [
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "SPARK"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "purple"
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "JODA"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "orange"
+        }
+       }
+      ]
+     }
+    ]
+   },
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom"
+    },
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ]
+    },
+    "textMode": "value_and_name"
+   },
+   "targets": [
+    {
+     "expr": "nvidia_smi_utilization_gpu_ratio * 100",
+     "legendFormat": "compute",
+     "refId": "A",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prom"
+     }
+    },
+    {
+     "expr": "nvidia_smi_utilization_memory_ratio * 100",
+     "legendFormat": "paměťová sběrnice",
+     "refId": "B",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prom"
+     }
+    }
+   ]
+  },
+  {
+   "type": "timeseries",
+   "title": "GPU teplota a rezerva",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prom"
+   },
+   "gridPos": {
+    "x": 8,
+    "y": 7,
+    "w": 8,
+    "h": 8
+   },
+   "fieldConfig": {
+    "defaults": {
+     "unit": "celsius",
+     "min": 0,
+     "custom": {
+      "fillOpacity": 12,
+      "lineWidth": 2,
+      "showPoints": "never"
+     }
+    },
+    "overrides": [
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "SPARK"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "purple"
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "JODA"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "orange"
+        }
+       }
+      ]
+     }
+    ]
+   },
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom"
+    },
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ]
+    },
+    "textMode": "value_and_name"
+   },
+   "targets": [
+    {
+     "expr": "nvidia_smi_temperature_gpu",
+     "legendFormat": "teplota",
+     "refId": "A",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prom"
+     }
+    },
+    {
+     "expr": "nvidia_smi_temperature_gpu_tlimit",
+     "legendFormat": "rezerva do throttlingu",
+     "refId": "B",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prom"
+     }
+    }
+   ],
+   "description": "tlimit = kolik °C zbývá do teplotního omezení."
+  },
+  {
+   "type": "timeseries",
+   "title": "GPU příkon a takt",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prom"
+   },
+   "gridPos": {
+    "x": 16,
+    "y": 7,
+    "w": 8,
+    "h": 8
+   },
+   "fieldConfig": {
+    "defaults": {
+     "unit": "short",
+     "min": 0,
+     "custom": {
+      "fillOpacity": 12,
+      "lineWidth": 2,
+      "showPoints": "never"
+     }
+    },
+    "overrides": [
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "SPARK"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "purple"
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "JODA"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "orange"
+        }
+       }
+      ]
+     }
+    ]
+   },
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom"
+    },
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ]
+    },
+    "textMode": "value_and_name"
+   },
+   "targets": [
+    {
+     "expr": "nvidia_smi_power_draw_watts",
+     "legendFormat": "příkon W",
+     "refId": "A",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prom"
+     }
+    },
+    {
+     "expr": "nvidia_smi_clocks_current_sm_clock_hz / 1e6",
+     "legendFormat": "SM MHz",
+     "refId": "B",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prom"
+     }
+    }
+   ],
+   "description": "Takt je zamčený přes -lgc 2100 (spark-hard-poweroff); pokles = throttling."
+  },
+  {
+   "type": "row",
+   "title": "Paměť a CPU",
+   "collapsed": false,
+   "gridPos": {
+    "x": 0,
+    "y": 15,
+    "w": 24,
+    "h": 1
+   }
+  },
+  {
+   "type": "timeseries",
+   "title": "RAM použito",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prom"
+   },
+   "gridPos": {
+    "x": 0,
+    "y": 16,
+    "w": 8,
+    "h": 8
+   },
+   "fieldConfig": {
+    "defaults": {
+     "unit": "bytes",
+     "min": 0,
+     "custom": {
+      "fillOpacity": 12,
+      "lineWidth": 2,
+      "showPoints": "never"
+     }
+    },
+    "overrides": [
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "SPARK"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "purple"
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "JODA"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "orange"
+        }
+       }
+      ]
+     }
+    ]
+   },
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom"
+    },
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ]
+    },
+    "textMode": "value_and_name"
+   },
+   "targets": [
+    {
+     "expr": "node_memory_MemTotal_bytes - node_memory_MemAvailable_bytes",
+     "legendFormat": "{{host}}",
+     "refId": "A",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prom"
+     }
+    }
+   ],
+   "description": "Na SPARKu sem patří i GPU alokace (unified memory)."
+  },
+  {
+   "type": "timeseries",
+   "title": "Swap",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prom"
+   },
+   "gridPos": {
+    "x": 8,
+    "y": 16,
+    "w": 8,
+    "h": 8
+   },
+   "fieldConfig": {
+    "defaults": {
+     "unit": "bytes",
+     "min": 0,
+     "custom": {
+      "fillOpacity": 12,
+      "lineWidth": 2,
+      "showPoints": "never"
+     }
+    },
+    "overrides": [
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "SPARK"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "purple"
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "JODA"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "orange"
+        }
+       }
+      ]
+     }
+    ]
+   },
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom"
+    },
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ]
+    },
+    "textMode": "value_and_name"
+   },
+   "targets": [
+    {
+     "expr": "node_memory_SwapTotal_bytes - node_memory_SwapFree_bytes",
+     "legendFormat": "{{host}}",
+     "refId": "A",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prom"
+     }
+    }
+   ]
+  },
+  {
+   "type": "timeseries",
+   "title": "Tlak na paměť (PSI full)",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prom"
+   },
+   "gridPos": {
+    "x": 16,
+    "y": 16,
+    "w": 8,
+    "h": 8
+   },
+   "fieldConfig": {
+    "defaults": {
+     "unit": "percent",
+     "min": 0,
+     "custom": {
+      "fillOpacity": 12,
+      "lineWidth": 2,
+      "showPoints": "never"
+     }
+    },
+    "overrides": [
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "SPARK"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "purple"
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "JODA"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "orange"
+        }
+       }
+      ]
+     }
+    ]
+   },
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom"
+    },
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ]
+    },
+    "textMode": "value_and_name"
+   },
+   "targets": [
+    {
+     "expr": "rate(node_pressure_memory_stalled_seconds_total[1m]) * 100",
+     "legendFormat": "{{host}}",
+     "refId": "A",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prom"
+     }
+    }
+   ],
+   "description": "% času, kdy všechny procesy čekají na paměť. spark-oom-guard zasahuje od 15 % po 10 s."
+  },
+  {
+   "type": "timeseries",
+   "title": "CPU",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prom"
+   },
+   "gridPos": {
+    "x": 0,
+    "y": 24,
+    "w": 8,
+    "h": 8
+   },
+   "fieldConfig": {
+    "defaults": {
+     "unit": "percent",
+     "min": 0,
+     "max": 100,
+     "custom": {
+      "fillOpacity": 12,
+      "lineWidth": 2,
+      "showPoints": "never"
+     }
+    },
+    "overrides": [
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "SPARK"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "purple"
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "JODA"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "orange"
+        }
+       }
+      ]
+     }
+    ]
+   },
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom"
+    },
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ]
+    },
+    "textMode": "value_and_name"
+   },
+   "targets": [
+    {
+     "expr": "100 * (1 - avg by (host) (rate(node_cpu_seconds_total{mode=\"idle\"}[1m])))",
+     "legendFormat": "{{host}}",
+     "refId": "A",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prom"
+     }
+    }
+   ]
+  },
+  {
+   "type": "timeseries",
+   "title": "Load / jádra",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prom"
+   },
+   "gridPos": {
+    "x": 8,
+    "y": 24,
+    "w": 8,
+    "h": 8
+   },
+   "fieldConfig": {
+    "defaults": {
+     "unit": "percentunit",
+     "min": 0,
+     "custom": {
+      "fillOpacity": 12,
+      "lineWidth": 2,
+      "showPoints": "never"
+     }
+    },
+    "overrides": [
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "SPARK"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "purple"
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "JODA"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "orange"
+        }
+       }
+      ]
+     }
+    ]
+   },
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom"
+    },
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ]
+    },
+    "textMode": "value_and_name"
+   },
+   "targets": [
+    {
+     "expr": "node_load1 / on (host) count by (host) (node_cpu_seconds_total{mode=\"idle\"})",
+     "legendFormat": "{{host}}",
+     "refId": "A",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prom"
+     }
+    }
+   ]
+  },
+  {
+   "type": "timeseries",
+   "title": "Teplota CPU (max čidlo)",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prom"
+   },
+   "gridPos": {
+    "x": 16,
+    "y": 24,
+    "w": 8,
+    "h": 8
+   },
+   "fieldConfig": {
+    "defaults": {
+     "unit": "celsius",
+     "min": 0,
+     "custom": {
+      "fillOpacity": 12,
+      "lineWidth": 2,
+      "showPoints": "never"
+     }
+    },
+    "overrides": [
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "SPARK"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "purple"
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "JODA"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "orange"
+        }
+       }
+      ]
+     }
+    ]
+   },
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom"
+    },
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ]
+    },
+    "textMode": "value_and_name"
+   },
+   "targets": [
+    {
+     "expr": "max by (host) (node_hwmon_temp_celsius)",
+     "legendFormat": "{{host}}",
+     "refId": "A",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prom"
+     }
+    }
+   ]
+  },
+  {
+   "type": "row",
+   "title": "Disk a síť",
+   "collapsed": false,
+   "gridPos": {
+    "x": 0,
+    "y": 32,
+    "w": 24,
+    "h": 1
+   }
+  },
+  {
+   "type": "timeseries",
+   "title": "Disk / volno",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prom"
+   },
+   "gridPos": {
+    "x": 0,
+    "y": 33,
+    "w": 8,
+    "h": 8
+   },
+   "fieldConfig": {
+    "defaults": {
+     "unit": "bytes",
+     "min": 0,
+     "custom": {
+      "fillOpacity": 12,
+      "lineWidth": 2,
+      "showPoints": "never"
+     }
+    },
+    "overrides": [
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "SPARK"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "purple"
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "JODA"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "orange"
+        }
+       }
+      ]
+     }
+    ]
+   },
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom"
+    },
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ]
+    },
+    "textMode": "value_and_name"
+   },
+   "targets": [
+    {
+     "expr": "node_filesystem_avail_bytes{mountpoint=\"/\"}",
+     "legendFormat": "{{host}}",
+     "refId": "A",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prom"
+     }
+    }
+   ]
+  },
+  {
+   "type": "timeseries",
+   "title": "Další disky volno",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prom"
+   },
+   "gridPos": {
+    "x": 8,
+    "y": 33,
+    "w": 8,
+    "h": 8
+   },
+   "fieldConfig": {
+    "defaults": {
+     "unit": "bytes",
+     "min": 0,
+     "custom": {
+      "fillOpacity": 12,
+      "lineWidth": 2,
+      "showPoints": "never"
+     }
+    },
+    "overrides": [
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "SPARK"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "purple"
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "JODA"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "orange"
+        }
+       }
+      ]
+     }
+    ]
+   },
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom"
+    },
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ]
+    },
+    "textMode": "value_and_name"
+   },
+   "targets": [
+    {
+     "expr": "node_filesystem_avail_bytes{fstype=~\"ext4|xfs|btrfs\", mountpoint!=\"/\", mountpoint!~\"/boot.*\"}",
+     "legendFormat": "{{host}} {{mountpoint}}",
+     "refId": "A",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prom"
+     }
+    },
+    {
+     "expr": "max by (host) (node_filesystem_avail_bytes{fstype=\"zfs\"})",
+     "legendFormat": "{{host}} zfs pool",
+     "refId": "B",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prom"
+     }
+    }
+   ]
+  },
+  {
+   "type": "timeseries",
+   "title": "Síť (kabel)",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prom"
+   },
+   "gridPos": {
+    "x": 16,
+    "y": 33,
+    "w": 8,
+    "h": 8
+   },
+   "fieldConfig": {
+    "defaults": {
+     "unit": "Bps",
+     "min": 0,
+     "custom": {
+      "fillOpacity": 12,
+      "lineWidth": 2,
+      "showPoints": "never"
+     }
+    },
+    "overrides": [
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "SPARK"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "purple"
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "JODA"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "orange"
+        }
+       }
+      ]
+     }
+    ]
+   },
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom"
+    },
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ]
+    },
+    "textMode": "value_and_name"
+   },
+   "targets": [
+    {
+     "expr": "rate(node_network_receive_bytes_total{device=~\"en.*|eth.*\"}[1m]) and on (host, device) node_network_up == 1",
+     "legendFormat": "{{host}} {{device}} příjem",
+     "refId": "A",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prom"
+     }
+    },
+    {
+     "expr": "rate(node_network_transmit_bytes_total{device=~\"en.*|eth.*\"}[1m]) and on (host, device) node_network_up == 1",
+     "legendFormat": "{{host}} {{device}} odesílání",
+     "refId": "B",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prom"
+     }
+    }
+   ],
+   "description": "Gigabit = ~118 MB/s strop."
+  }
+ ]
+}

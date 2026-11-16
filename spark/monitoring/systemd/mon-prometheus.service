@@ -1,0 +1,19 @@
+[Unit]
+Description=Prometheus (SPARK + JODA monitoring)
+After=network-online.target
+
+[Service]
+ExecStart=@MON@/run/prometheus/prometheus \
+  --config.file=@MON@/run/prometheus.yml \
+  --storage.tsdb.path=@MON@/run/data/prometheus \
+  --storage.tsdb.retention.time=90d \
+  --storage.tsdb.retention.size=5GB \
+  --web.listen-address=127.0.0.1:9090 \
+  --web.enable-lifecycle
+Restart=always
+RestartSec=10
+MemoryHigh=768M
+MemoryMax=1G
+
+[Install]
+WantedBy=default.target

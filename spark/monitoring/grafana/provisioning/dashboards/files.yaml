@@ -1,0 +1,4 @@
+apiVersion: 1
+providers:
+  # MON_HOME is set by the mon-grafana user unit.
+  - { name: files, type: file, options: { path: "$MON_HOME/grafana/dashboards" } }

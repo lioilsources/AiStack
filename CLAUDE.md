@@ -198,6 +198,9 @@ odmítne start, dokud běží `rag-schedule.timer`. Detaily: `services/spark-bro
 | 8090 | controller | Go service |
 | 8188 | ComfyUI | host-native, mimo Docker |
 | 8100 | spark-broker | `0.0.0.0`, host-native (user systemd) — fronta úloh SPARKu |
+| 3000 | mon-grafana | `0.0.0.0`, user systemd — dashboard SPARK + JODA (`spark/monitoring/`) |
+| 9090 | mon-prometheus | user systemd |
+| 9835 | mon-gpu-exporter | user systemd, nvidia-smi metriky |
 
 ## Důležitá varování
 
