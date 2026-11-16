@@ -1,0 +1,19 @@
+# node_exporter on JODA, scraped by Prometheus on SPARK.
+# Deploy: copy to ~/deploy/node-exporter/ on JODA, create .env with JODA_LAN_IP, `docker compose up -d`.
+name: node-exporter
+services:
+  node-exporter:
+    image: prom/node-exporter:v1.12.1
+    restart: unless-stopped
+    network_mode: host
+    pid: host
+    mem_limit: 64m
+    # Snap Docker runs in the snap mount namespace, where the host "/" is the snap base image.
+    # The real host root (with all submounts) is at /var/lib/snapd/hostfs there, so bind that
+    # and point --path.rootfs at it. Without it statfs("/") reports the container overlay,
+    # which is wrong as soon as the Docker data root sits on another filesystem.
+    volumes: ["/var/lib/snapd/hostfs:/host:ro"]
+    command:
+      - --path.rootfs=/host
+      - --web.listen-address=${JODA_LAN_IP:?set JODA_LAN_IP in .env}:9100
+      - --collector.filesystem.mount-points-exclude=^/(dev|proc|sys|run|var/lib/docker/.+|snap/.+)($|/)
