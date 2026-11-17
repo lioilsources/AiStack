@@ -13,3 +13,16 @@ deploy/parsers/*.py
 outputs/
 spark/oom-guard/spark-oom-guard
 spark/monitoring/run/
+# devconv:start
+.env.*
+!.env.example
+*.p8
+*.p12
+*.jks
+key.properties
+.claude/settings.local.json
+CLAUDE.local.md
+# devconv:end
+bin/
+*.test
+*.out

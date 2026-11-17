@@ -226,7 +226,7 @@ kdežto transient je u herních SFX to jediné, na čem záleží.
 
 ## Nasazení na SPARK
 
-Stack se nasazuje `git pull` v `/home/ol1n/deploy/AiStack` — image se buildí
+Stack se nasazuje `git pull` v `~/deploy/AiStack` — image se buildí
 na místě, protože musí být aarch64. Build z Macu nefunguje.
 
 ```bash
@@ -239,9 +239,9 @@ make up-audio
 
 ## Nasazení TTS na SPARK
 
-**Jen v bezpečném okně** (profil llm 19–01, nebo 07–13 s `MemAvailable ≥ 20 GiB`).
-Ve director oknech (01–07, 13–19) je volných 4–8 GiB a build i model by shodil
-director přes OOM guard (`PLAN-spark-scheduler.md` §3b).
+**Jen pod úlohou spark-brokeru** (`sparkctl lease` na profil s `MemAvailable ≥ 20 GiB`,
+např. `llm` nebo `comfy`). Vedle directora je volných 4–8 GiB a build i model by shodil
+director přes OOM guard (`PLAN-spark-scheduler.md` §3b). Pevná okna z plánu už neplatí.
 
 ```bash
 ssh spark
@@ -271,7 +271,7 @@ python3 services/audio/scripts/smoke_sfx.py
 python3 services/audio/scripts/bench.py      # → bench/timings.csv
 ```
 
-Modely žijí mimo repo v `$AUDIO_MODELS_PATH` (default `/home/ol1n/dev/audio/models`).
+Modely žijí mimo repo v `$AUDIO_MODELS_PATH` (default `~/dev/audio/models` na SPARKu).
 Licence viz `LICENSES.md`.
 
 ## Naměřený výkon (GB10)
