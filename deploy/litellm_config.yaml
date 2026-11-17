@@ -156,8 +156,6 @@ model_list:
     litellm_params: {model: openai/swarm-director, api_base: "http://swarm-director:8000/v1", api_key: dummy, timeout: 900, temperature: 0.2, extra_body: {chat_template_kwargs: {enable_thinking: false}}}
   - model_name: bench-gemma
     litellm_params: {model: openai/gemma, api_base: "http://bench-gemma:8000/v1", api_key: dummy, timeout: 600, temperature: 0.2}
-  - model_name: bench-llama33
-    litellm_params: {model: openai/llama33, api_base: "http://bench-llama33:8000/v1", api_key: dummy, timeout: 1800, temperature: 0.2}
   # Agent Právníka (rag/agent ve WorldLibraryProject): Gemma-4 na vyžádání
   # (rag-schedule.sh gemma), jinak fallback na qwen36 — bench C1 92/100 %, injection 100 %.
   - model_name: pravnik-agent
@@ -203,7 +201,8 @@ model_list:
         chat_template_kwargs:
           enable_thinking: false
 
-  # shop-embed = BAAI/bge-m3 (1024 dim) — /v1/embeddings
+  # shop-embed = BAAI/bge-m3 (1024 dim) — /v1/embeddings, TEI na CPU
+  # (docker-compose.shop-embed.yaml). `shop` chat výše zatím nemá compose.
   - model_name: shop-embed
     litellm_params:
       model: openai/shop-embed

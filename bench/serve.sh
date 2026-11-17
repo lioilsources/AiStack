@@ -3,9 +3,8 @@
 # Spouštět z ~/deploy/AiStack. Každý projde mem-admit (rezerva 2 GiB), jinak nenaběhne.
 #
 #   bench/serve.sh gemma    # Gemma-4-31B-IT-NVFP4, ~35 GiB, den (vedle ComfyUI)
-#   bench/serve.sh llama33  # Llama-3.3-70B-Instruct fp8, ~85 GiB, jen noc (director dolů)
 #   bench/serve.sh nano     # Nemotron-3-Nano-30B, 0.22 (~27 GiB) — compose 0.15 od vLLM 0.21 nestačí na KV cache
-#   bench/serve.sh stop gemma|llama33|nano
+#   bench/serve.sh stop gemma|nano
 set -euo pipefail
 cd "$(dirname "$0")/.."
 set -a; . ./.env; set +a
@@ -20,17 +19,6 @@ case "${1:-}" in
       vllm/vllm-openai:gemma4-cu130 nvidia/Gemma-4-31B-IT-NVFP4 \
       --served-model-name gemma --gpu-memory-utilization "$gu" --max-model-len "$gl" --max-num-seqs 4 \
       --enable-auto-tool-choice --tool-call-parser gemma4 --trust-remote-code
-    ;;
-  llama33)
-    snap=$(ls -d "$HOME"/.nim/cache/ngc/hub/models--nim--meta--llama-3.3-70b-instruct/snapshots/fp8-*tool-calling)
-    blobs="$HOME/.nim/cache/ngc/hub/models--nim--meta--llama-3.3-70b-instruct/blobs"
-    scripts/mem-admit.sh bench-llama33 0.70
-    # snapshot = symlinky do ../../blobs → namontovat oba na stejné relativní místo
-    docker run -d --name bench-llama33 --network ai --gpus all --ipc host \
-      -v "$snap:/m/snapshots/s:ro" -v "$blobs:/m/blobs:ro" \
-      "vllm/vllm-openai:${SWARM_VLLM_VERSION}" /m/snapshots/s \
-      --served-model-name llama33 --quantization modelopt --gpu-memory-utilization 0.70 \
-      --max-model-len 16384 --max-num-seqs 2 --enable-auto-tool-choice --tool-call-parser llama3_json
     ;;
   nano)
     # Síťový alias swarm-nano: LiteLLM alias bench-nano míří na http://swarm-nano:8000.
@@ -47,8 +35,8 @@ case "${1:-}" in
       --reasoning-parser-plugin /parsers/nano_v3_reasoning_parser.py --reasoning-parser nano_v3 --trust-remote-code
     ;;
   stop)
-    docker rm -f "bench-${2:?gemma|llama33|nano}"
+    docker rm -f "bench-${2:?gemma|nano}"
     ;;
-  *) sed -n 2,8p "$0"; exit 2 ;;
+  *) sed -n 2,7p "$0"; exit 2 ;;
 esac
 echo "čekám na /v1/models (první start kompiluje, může trvat 10+ min): docker logs -f bench-${1}"

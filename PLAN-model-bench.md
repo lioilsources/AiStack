@@ -170,6 +170,10 @@ renderem). Rychlý chat bez nástrojů = qwen36. ShaderGen coder = Nano-30B (12 
 Llama-3.3 ne (3 tok/s, 43 chyb nástrojů). Nalezené chyby: agent Právníka posílal víc system zpráv (Qwen 400,
 opraveno `25c3d27`), Nano s util 0,15 nemá KV cache (bench/serve.sh nano 0,22).
 
+**17. 11. 2026:** váhy Llama-3.3-70B (68 G) byly smazány při uvolňování disku na SPARKu. Větev `llama33`
+v `bench/serve.sh` a alias `bench-llama33` v LiteLLM jsou odstraněné, naměřené výsledky zůstávají
+v `bench/results/bench-llama33`. Zmínky o `llama33` výše popisují stav v době benchmarku.
+
 **Rozhodovací pravidla:**
 - Právník `law-chat` (bez nástrojů): A1(a) ≥ 90 %, A1 lidské ≥ 4/5, C4 ≥ 4/5 → jinak „nepouštět na produkci“ (plan-pravnik §9.3).
 - Právník agent: navíc C1 ≥ 80 % scénářů a 0 halucinovaných nástrojů → kandidáti jen s tools; **pokud vyhraje jen director nebo Llama, agent je noční**.

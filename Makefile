@@ -10,6 +10,7 @@ COMPOSE_VL := docker compose -f deploy/docker-compose.vl.yaml --env-file .env
 COMPOSE_ASR := docker compose -f deploy/docker-compose.asr.yaml --env-file .env
 COMPOSE_AUDIO     := docker compose -f deploy/docker-compose.audio.yaml --env-file .env
 COMPOSE_AGENT     := docker compose -f deploy/docker-compose.agent.yaml --env-file .env
+COMPOSE_SHOP_EMBED := docker compose -f deploy/docker-compose.shop-embed.yaml --env-file .env
 
 .PHONY: build up down logs ps \
         up-llm up-image up-ocr \
@@ -28,6 +29,7 @@ COMPOSE_AGENT     := docker compose -f deploy/docker-compose.agent.yaml --env-fi
         up-audio-tts up-audio-tts-xtts up-audio-tts-chatterbox stop-audio-tts-gpu \
         build-audio-tts build-audio-tts-gpu download-audio-tts smoke-audio-tts logs-audio-tts \
         up-agent down-agent logs-agent download-agent \
+        up-shop-embed stop-shop-embed logs-shop-embed download-shop-embed \
         gateway-build gateway-run oom-guard-build
 
 ## Full stack
@@ -166,6 +168,20 @@ down-agent:
 
 logs-agent:
 	$(COMPOSE_AGENT) logs -f --tail=50
+
+## Shop embeddings — BAAI/bge-m3 na CPU (~2,5 GiB UMA), rezidentní jako CPU TTS.
+## Shodit jen stop (oom-guard ho bere jako první oběť), nikdy down.
+up-shop-embed:
+	$(COMPOSE_SHOP_EMBED) up -d
+
+stop-shop-embed:
+	$(COMPOSE_SHOP_EMBED) stop shop-embed
+
+logs-shop-embed:
+	$(COMPOSE_SHOP_EMBED) logs -f --tail=50
+
+download-shop-embed:
+	env $$(grep -v '^#' .env | xargs) bash scripts/download_shop_embed.sh
 
 ## Translate module
 # up-translate       plný profil (57 GiB) — nejrychlejší obohacení korpusu

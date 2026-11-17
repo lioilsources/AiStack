@@ -1,0 +1,45 @@
+# shop-embed — BAAI/bge-m3 (1024 dim) on CPU for Shopify (ChatShop/SlopMarket).
+#
+# Resident like the CPU TTS: no GPU reservation, no CUDA context, so it never
+# competes with ComfyUI or an LLM for VRAM. It still takes ~2.5 GiB of the
+# unified pool, hence mem_limit and first place in spark-oom-guard targets
+# (the shop falls back to fulltext when it is gone).
+# LiteLLM routes `shop-embed` here (litellm_config.yaml): http://shop-embed:8000/v1
+#
+# Weights:  make download-shop-embed   (~4.5 GB on disk, needs owner consent)
+# Start:    make up-shop-embed
+# Stop:     make stop-shop-embed       (stop, never down)
+services:
+  shop-embed:
+    image: ghcr.io/huggingface/text-embeddings-inference:cpu-arm64-1.9
+    container_name: shop-embed
+    restart: unless-stopped
+    command: >
+      --model-id /data/bge-m3
+      --port 8000
+      --max-batch-tokens 8192
+      --max-client-batch-size 32
+      --auto-truncate
+    environment:
+      - HF_HUB_OFFLINE=1
+    ports:
+      - "127.0.0.1:8042:8000"
+    volumes:
+      # Relative to deploy/: the repo cache dir, same default as the download script.
+      - ${CACHE_SHOP_EMBED:-../cache/shop-embed}:/data:ro
+    # Grace has 20 cores; keep embeddings from starving ComfyUI's CPU work.
+    cpus: 4
+    mem_limit: 4g
+    networks:
+      - internal
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8000/health || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 120s
+
+networks:
+  internal:
+    external: true
+    name: ai
