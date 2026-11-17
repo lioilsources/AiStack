@@ -2,7 +2,7 @@
 
 Brief pro autonomní Opus session. (Revize 2026-10-05: soudce = qwen36 přes
 alias `judge`, ne `vl` — viz `PLAN-spark-scheduler.md`.) Cílový repo je **FineTuneGallery**
-(`/Volumes/YOTTA/Dev/FineTuneGallery`), ne AiStack — tady leží jen plán.
+(`$DEV_ROOT/FineTuneGallery`), ne AiStack — tady leží jen plán.
 Soudce je **qwen36** (Qwen3.6-35B-A3B NVFP4, `qwen36-agent`), který podle
 `PLAN-spark-scheduler.md` běží v okně **llm 17–01** a dělá tam vidění —
 Qwen2.5-VL (`vl`) v rozvrhu není. Z AiStacku jde jen alias `judge`

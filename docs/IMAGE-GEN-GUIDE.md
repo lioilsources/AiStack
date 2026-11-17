@@ -1,16 +1,18 @@
 # Generování obrázků na SPARKu — průvodce pro projekty
 
 Stav 2026-10-02 (časy doplněné z běhu MemeShorts G0 téhož dne). Pro sessions, které plánují grafiku (Mutants, Kittens, BioDefenseRogue, …).
-„Neověřeno“ = nezměřené, v plánu tak označit. Okna a profily: `PLAN-spark-scheduler.md` §3 (jediný zdroj
-časů). Dávky ohlásit session **Director** předem (čas, počet).
+„Neověřeno“ = nezměřené, v plánu tak označit. Profily a doplňky: `services/spark-broker/deploy/config.example.yaml`.
+Dávky se zařazují do fronty přes `sparkctl` (`lease`, `run`, `exec`), ne ohlášením jiné session.
 
 ## 1. Co běží a kdy
 
-| Backend | Okno | Na co |
+Profily přepíná spark-broker (`sparkctl lease`); pevná okna (07–13, 19–01) už neplatí.
+
+| Backend | Profil brokera | Na co |
 |---|---|---|
-| **flux-schnell NIM** přes gen-queue | comfy 07–13, llm 19–01 | tier 0, txt2img, 4 kroky, rychlý |
-| **ComfyUI** (`http://<spark>:8188`, LAN bez auth) | jen comfy 07–13 (primárně experimenty uživatele) | vše ostatní: img2img, ControlNet, IP-Adapter, inpaint, upscale, výřez, video |
-| nic obrázkového | director 13–19 a 01–07 | director (91 GiB) se s ničím jiným nevejde |
+| **flux-schnell NIM** přes gen-queue | doplněk `flux-schnell` k `comfy`, `llm`, `gemma` | tier 0, txt2img, 4 kroky, rychlý |
+| **ComfyUI** (`http://<spark>:8188`, LAN bez auth) | jen `comfy` | vše ostatní: img2img, ControlNet, IP-Adapter, inpaint, upscale, výřez, video |
+| nic obrázkového | `director`, `gptoss` | director (91 GiB) se s ničím jiným nevejde |
 
 ## 2. Modely v ComfyUI
 

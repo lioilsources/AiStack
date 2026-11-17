@@ -1,5 +1,8 @@
 # PLAN-spark-scheduler.md — plné využití SPARKu pro víc projektů
 
+> **Historické.** Pevná okna a `rag-schedule.timer` nahradil spark-broker (`PLAN-spark-broker.md`,
+> `services/spark-broker/README.md`). Hodiny níž neplatí; platí profily a paměťová pravidla.
+
 Stav 2026-10-01 odpoledne. Navazuje na `PLAN-model-bench.md` (naměřené modely §6a). Jediné místo, kde
 jsou okna a profily SPARKu — plány projektů na ně odkazují jménem profilu, ne hodinami.
 

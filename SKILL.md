@@ -2,7 +2,7 @@
 
 Referenční příručka: jak AiStack **provozovat** (up/down/logs), jeho **pravidla**,
 rozdíl mezi **NIM** a **vLLM** moduly (+ úskalí), a checklist na **přidání nového** modulu.
-Předpoklad: **vždy** pracovat z `/home/ol1n/deploy/AiStack/` (jinak se nenačte `.env`).
+Předpoklad: **vždy** pracovat z `~/deploy/AiStack/` (jinak se nenačte `.env`).
 
 ---
 
@@ -32,7 +32,7 @@ Po editaci `litellm_config.yaml` stačí restart gatewaye, ne celého stacku:
 
 ## B. Pravidla AiStacku
 
-- **Spouštět z `/home/ol1n/deploy/AiStack/`** — jinak `.env` nenačte (`--env-file .env` je relativní).
+- **Spouštět z `~/deploy/AiStack/`** — jinak `.env` nenačte (`--env-file .env` je relativní).
 - **Model swap = přepsat symlink `cache/{role}` + `HF_MODEL_{ROLE}` v `.env`.** Compose ani CLAUDE.md se nemění.
 - **NIM kontejnery NIKDY nesdílejí cache dir** (kompilované engine artefakty). HF/vLLM se stejným modelem cache sdílet **mohou** (s `HF_HUB_OFFLINE=1` jen čtou).
 - **`--kv-cache-dtype fp8` NEFUNGUJE na GB10/Blackwell** — tokenový šum. Nepoužívat.
@@ -95,7 +95,7 @@ Příklady: `nvidia--Nemotron-Nano-30B-A3B-NVFP4`, `meta--llama-3.1-8b-instruct`
 
 Do `.env` přidat:
 ```bash
-CACHE_{ROLE}=/home/ol1n/deploy/AiStack/cache/{role}
+CACHE_{ROLE}=~/deploy/AiStack/cache/{role}
 HF_MODEL_{ROLE}={org}/{model}     # jen pro HF/vLLM (NIM nepotřebuje)
 ```
 
@@ -239,7 +239,7 @@ docker compose -f deploy/docker-compose.llm.yaml restart litellm
 
 ```yaml
 {role}:
-  compose_file: /home/ol1n/deploy/AiStack/deploy/docker-compose.{module}.yaml
+  compose_file: ~/deploy/AiStack/deploy/docker-compose.{module}.yaml
   services: [{role}]
   health_url: http://{role}:8000/v1/models
   health_timeout: 360s
