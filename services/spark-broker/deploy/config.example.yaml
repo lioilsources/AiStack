@@ -76,6 +76,13 @@ addons:
     detect: '[ "$(docker inspect -f {{.State.Running}} asr 2>/dev/null)" = true ]'
     mem_gib: 6
     max_jobs: 4
+  dabing-separate:  # Demucs htdemucs_ft (CeskyDabing), :8101 — mem_gib odhad, změřit po prvním běhu
+    profiles: [comfy, llm, gemma]
+    up: cd ~/deploy/CeskyDabing && docker compose -f deploy/compose.spark.yaml up -d separate && for i in $(seq 60); do curl -sf -m5 -o /dev/null localhost:8101/healthz && exit 0; sleep 5; done; exit 1
+    down: cd ~/deploy/CeskyDabing && docker compose -f deploy/compose.spark.yaml stop separate
+    detect: '[ "$(docker inspect -f {{.State.Running}} dabing-separate 2>/dev/null)" = true ]'
+    mem_gib: 8
+    max_jobs: 1
 
 # Strop priority, který si projekt smí dát sám (víc = dotaz na uživatele).
 # 0 = backlog, 90 PromoClown, 100 = okno uživatele (on_behalf_of_user).
@@ -89,6 +96,7 @@ projects:
   kirian: {max: 30}
   chrestys: {max: 30}
   alienmatch: {max: 30}
+  dabing: {max: 30}
   aiswarmbattle: {max: 20}
   promoclown: {max: 90}
 default_project_max: 20
