@@ -203,7 +203,8 @@ model_list:
         chat_template_kwargs:
           enable_thinking: false
 
-  # shop-embed = BAAI/bge-m3 (1024 dim) — /v1/embeddings
+  # shop-embed = BAAI/bge-m3 (1024 dim) — /v1/embeddings, TEI na CPU
+  # (docker-compose.shop-embed.yaml). `shop` chat výše zatím nemá compose.
   - model_name: shop-embed
     litellm_params:
       model: openai/shop-embed
